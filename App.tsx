@@ -3176,3 +3176,12 @@ export default function App() {
     </div>
   );
 }
+import ReactDOM from 'react-dom/client';
+
+// Comando de arranque para desenhar a aplicação no ecrã
+if (typeof document !== 'undefined') {
+  const rootElement = document.getElementById('root');
+  if (rootElement) {
+    ReactDOM.createRoot(rootElement).render(<App />);
+  }
+}
