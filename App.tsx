@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Armazem, ProdutoMaster, Veiculo, Envio } from './types/database';
-import { logisticsService } from './services/logisticsService';
 import { Header, TabType } from './components/Header';
 import { Dashboard } from './components/Dashboard';
 import { InventarioMaster } from './components/InventarioMaster';
