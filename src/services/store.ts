@@ -1212,4 +1212,10 @@ class ERPStore {
   }
 }
 
-export const erpStore = new ERPStore();
+// Localiza onde a store é inicializada e altera currentUser para null:
+export const erpStore = {
+  // ... outros estados
+  currentUser: null, // <-- Alterar de 'admin' ou user object para null
+  
+  // ... restante código
+};
