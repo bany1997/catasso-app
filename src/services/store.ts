@@ -597,12 +597,8 @@ class ERPStore {
 
   private listeners: (() => void)[] = [];
 
-  constructor() {
+constructor() {
     this.loadState();
-    // Default logged in user: superadmin (admin / 1234)
-    if (!this.currentUser) {
-      this.currentUser = this.users.find(u => u.username === 'admin') || null;
-    }
   }
 
   private loadState() {
@@ -1212,10 +1208,4 @@ class ERPStore {
   }
 }
 
-// Localiza onde a store é inicializada e altera currentUser para null:
-export const erpStore = {
-  // ... outros estados
-  currentUser: null, // <-- Alterar de 'admin' ou user object para null
-  
-  // ... restante código
-};
+export const erpStore = new ERPStore();
