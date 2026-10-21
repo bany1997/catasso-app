@@ -1,0 +1,6 @@
+{
+  "name": "CATASSO ERP de Logística Industrial",
+  "description": "Sistema Integrado de Gestão Logística Industrial, Estoques, Frotas, Fornecedores e RNC.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
