@@ -42,3 +42,69 @@ export default function App() {
   if (!erpStore.currentUser) {
     return <Login onLoginSuccess={() => setActiveTab('dashboard')} />;
   }
+
+  const renderActiveModule = () => {
+    switch (activeTab) {
+      case 'dashboard':
+        return <GeneralDashboard onNavigate={tabId => setActiveTab(tabId)} />;
+      case 'catalog':
+        return <ProductCatalog />;
+      case 'movements':
+        return <StockMovements />;
+      case 'purchases':
+        return <PurchaseOrders onNavigateToInspection={() => setActiveTab('receiving')} />;
+      case 'receiving':
+        return <ReceivingInspection />;
+      case 'supplierPortal':
+        return <SupplierPortal />;
+      case 'chemicals_calibration':
+        return <ChemicalAndCalibration />;
+      case 'transfers':
+        return <Transfers />;
+      case 'fleet':
+        return <FleetManagement />;
+      case 'locations':
+        return <WarehouseLayout />;
+      case 'rnc':
+        return <RncManagement />;
+      case 'reports':
+        return <AnalyticsAndReports />;
+      case 'users':
+        return <UserManagement />;
+      default:
+        return <GeneralDashboard onNavigate={tabId => setActiveTab(tabId)} />;
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans antialiased selection:bg-sky-600 selection:text-white">
+      {/* Top Header */}
+      <Header onLogout={() => erpStore.logout()} activeTab={activeTab} />
+
+      {/* Main Container with Sidebar + Content */}
+      <div className="flex-1 flex overflow-hidden">
+        <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
+
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-slate-950">
+          <div className="max-w-7xl mx-auto space-y-6">
+            {renderActiveModule()}
+
+            {/* Bottom System Creator Badge */}
+            <div className="pt-8 pb-4 border-t border-slate-900 flex flex-col sm:flex-row items-center justify-between gap-2 text-[11px] text-slate-500">
+              <div>
+                <strong>CATASSO</strong> ERP de Logística Industrial & Gestão Integrada · República de Angola
+              </div>
+              <div>
+                Sistema concebido por: <strong className="text-slate-400">Albano Luana do Nascimento Catasso</strong> (
+                <a href="mailto:alncatasso@gmail.com" className="text-sky-500 hover:underline">
+                  alncatasso@gmail.com
+                </a>
+                )
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+}
