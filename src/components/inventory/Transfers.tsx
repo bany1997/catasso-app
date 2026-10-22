@@ -62,7 +62,6 @@ export const Transfers: React.FC = () => {
         {
           headers: ['SKU', 'Designação do Material', 'Qtd. Solicitada', 'Qtd. Efetiva Recebida', 'Estado'],
           rows: trf.items.map(i => {
-            // Garante que a guia mostra sempre o valor real recebido ou o enviado
             const finalQty = (i as any).receivedQuantity !== undefined ? (i as any).receivedQuantity : i.quantity;
             return [
               i.sku,
@@ -556,7 +555,7 @@ const NewMultiTransferModal: React.FC<{ onClose: () => void; onSuccess: () => vo
 };
 
 // ==========================================
-// MODAL 2: Análise e Despacho na Origem
+// MODAL 2: Análise e Despacho na Origem (Sem Travamento de Estoque)
 // ==========================================
 const ApproveTransferModal: React.FC<{
   transfer: WarehouseTransfer;
@@ -566,6 +565,7 @@ const ApproveTransferModal: React.FC<{
   const originWh = erpStore.warehouses.find(w => w.id === transfer.originWarehouseId);
   const destWh = erpStore.warehouses.find(w => w.id === transfer.destinationWarehouseId);
 
+  // Inicializa permitindo ajustar a quantidade livremente até ao saldo disponível real
   const [itemsToShip, setItemsToShip] = useState(
     transfer.items.map(item => {
       const prod = catalogService.getProductBySku(item.sku);
@@ -593,7 +593,15 @@ const ApproveTransferModal: React.FC<{
       return;
     }
 
-    // Baixa o estoque físico diretamente no armazém de origem
+    // Valida se a quantidade inserida não excede o estoque físico disponível na origem
+    for (const item of itemsToShip) {
+      if (item.approvedQty > item.availableStock) {
+        alert(`A quantidade aprovada para o produto ${item.productName} (${item.approvedQty} UN) excede o estoque físico disponível no armazém (${item.availableStock} UN).`);
+        return;
+      }
+    }
+
+    // Baixa o estoque físico diretamente no armazém de origem de forma segura
     itemsToShip.forEach(i => {
       const prod = catalogService.getProductById(i.productId);
       if (prod) {
@@ -609,7 +617,7 @@ const ApproveTransferModal: React.FC<{
       productId: i.productId,
       sku: i.sku,
       productName: i.productName,
-      quantity: i.approvedQty, // Quantidade efetivamente enviada
+      quantity: i.approvedQty, // Quantidade efetivamente enviada e aprovada
     }));
     transfer.transportDetails = {
       carrier,
@@ -663,7 +671,7 @@ const ApproveTransferModal: React.FC<{
                       onChange={e => {
                         const val = parseInt(e.target.value, 10) || 0;
                         const newItems = [...itemsToShip];
-                        newItems[idx].approvedQty = Math.min(val, item.availableStock);
+                        newItems[idx].approvedQty = val; // Permite digitar livremente para validação no submit
                         setItemsToShip(newItems);
                       }}
                       className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-emerald-400 font-mono font-bold focus:border-amber-500"
@@ -762,7 +770,7 @@ const ApproveTransferModal: React.FC<{
 };
 
 // ==========================================
-// MODAL 3: Conferência Discriminada no Destino (Sem Duplicação)
+// MODAL 3: Conferência Discriminada no Destino
 // ==========================================
 const ReceiveCheckModal: React.FC<{
   transfer: WarehouseTransfer;
@@ -772,14 +780,13 @@ const ReceiveCheckModal: React.FC<{
   const [receivedItems, setReceivedItems] = useState(
     transfer.items.map(item => ({
       ...item,
-      receivedQuantity: item.quantity, // Sugere por defeito o que foi enviado
+      receivedQuantity: item.quantity,
     }))
   );
 
   const handleConfirmReceipt = (e: React.FormEvent) => {
     e.preventDefault();
 
-    // 1. Dá entrada única e exclusiva no estoque do armazém de destino com a quantidade contada
     receivedItems.forEach(i => {
       const prod = catalogService.getProductById(i.productId);
       if (prod) {
@@ -789,14 +796,13 @@ const ReceiveCheckModal: React.FC<{
       }
     });
 
-    // 2. Atualiza os dados da transferência (armazena receivedQuantity para constar na guia e histórico)
     transfer.status = 'recebida';
     transfer.items = receivedItems.map(i => ({
       productId: i.productId,
       sku: i.sku,
       productName: i.productName,
-      quantity: i.quantity, // Mantém histórico enviado
-      receivedQuantity: i.receivedQuantity, // Quantidade física real recebida
+      quantity: i.quantity,
+      receivedQuantity: i.receivedQuantity,
     } as any));
 
     erpStore.saveToStorage();
