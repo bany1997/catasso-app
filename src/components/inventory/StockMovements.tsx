@@ -17,6 +17,8 @@ import {
   CheckCircle2,
   PackagePlus,
   Send,
+  Trash2,
+  Plus,
 } from 'lucide-react';
 
 export const StockMovements: React.FC = () => {
@@ -42,14 +44,12 @@ export const StockMovements: React.FC = () => {
 
   // Filter movements for this warehouse
   const allMovements = erpStore.movements.filter(m => {
-    // If client, filter to checkouts requested by them
     if (isCliente) {
       return (
         m.requesterOrRecipient?.toLowerCase().includes(currentUser.name.toLowerCase()) ||
         m.executedByUserId === currentUser.id
       );
     }
-    // Superadmin sees all or active warehouse
     if (currentUser?.role === 'superadmin') {
       return m.warehouseId === activeWh?.id || activeWh?.id === 'all';
     }
@@ -159,7 +159,7 @@ export const StockMovements: React.FC = () => {
     });
   };
 
-  // Imprimir Comprovativo Individual de Saída (com espaço para assinaturas do Atendente e do Cliente)
+  // Imprimir Comprovativo Individual de Saída (Guia de Remessa)
   const handlePrintIndividualCheckout = (m: StockMovement) => {
     printFormalDocument({
       title: `Guia de Remessa & Saída de Estoque: ${m.productName}`,
@@ -214,7 +214,6 @@ export const StockMovements: React.FC = () => {
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Cliente or Atendente: Saída de Material */}
           {(isCliente || isAtendente || isResponsavelOrAbove) && (
             <button
               type="button"
@@ -222,11 +221,10 @@ export const StockMovements: React.FC = () => {
               className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm"
             >
               <ArrowUpRight className="w-3.5 h-3.5" />
-              <span>{isCliente ? 'Solicitar Saída de Material' : 'Atender Saída de Material'}</span>
+              <span>{isCliente ? 'Solicitar Saída de Vários Produtos' : 'Saída Multilinhas (Cliente)'}</span>
             </button>
           )}
 
-          {/* Responsável: Devolver ao Estoque */}
           {isResponsavelOrAbove && (
             <button
               type="button"
@@ -238,7 +236,6 @@ export const StockMovements: React.FC = () => {
             </button>
           )}
 
-          {/* Responsável: Adicionar Produto via Inventário Rápido */}
           {isResponsavelOrAbove && (
             <button
               type="button"
@@ -246,13 +243,13 @@ export const StockMovements: React.FC = () => {
               className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white rounded text-xs font-semibold flex items-center gap-1.5 transition-colors"
             >
               <PackagePlus className="w-3.5 h-3.5" />
-              <span>Inventário Rápido / Adicionar</span>
+              <span>Inventário Multilinhas / Rápido</span>
             </button>
           )}
         </div>
       </div>
 
-      {/* Tabs Switcher: Entradas vs Saídas */}
+      {/* Tabs Switcher */}
       <div className="flex items-center gap-1 p-1 bg-slate-900 border border-slate-800 rounded-lg max-w-md">
         <button
           type="button"
@@ -281,10 +278,9 @@ export const StockMovements: React.FC = () => {
         </button>
       </div>
 
-      {/* Content depending on Active Tab */}
+      {/* Content */}
       {activeTab === 'entradas' ? (
         <div className="space-y-3">
-          {/* Dedicated Search bar for Entradas + Exports */}
           <div className="bg-slate-900 border border-slate-800 rounded-lg p-3 flex flex-col sm:flex-row items-center justify-between gap-3">
             <div className="relative w-full sm:w-80">
               <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-500" />
@@ -317,7 +313,6 @@ export const StockMovements: React.FC = () => {
             </div>
           </div>
 
-          {/* Entradas Table */}
           <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
@@ -383,7 +378,6 @@ export const StockMovements: React.FC = () => {
         </div>
       ) : (
         <div className="space-y-3">
-          {/* Dedicated Search bar for Saídas + Exports */}
           <div className="bg-slate-900 border border-slate-800 rounded-lg p-3 flex flex-col sm:flex-row items-center justify-between gap-3">
             <div className="relative w-full sm:w-80">
               <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-500" />
@@ -416,7 +410,6 @@ export const StockMovements: React.FC = () => {
             </div>
           </div>
 
-          {/* Saídas Table */}
           <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
@@ -476,7 +469,7 @@ export const StockMovements: React.FC = () => {
                             type="button"
                             onClick={() => handlePrintIndividualCheckout(m)}
                             className="p-1.5 bg-slate-800 hover:bg-slate-700 text-sky-400 rounded transition-colors inline-flex items-center gap-1"
-                            title="Imprimir Comprovativo Individual de Saída (Guia de Remessa)"
+                            title="Imprimir Guia de Remessa PDF"
                           >
                             <Printer className="w-3.5 h-3.5" />
                             <span className="text-[10px]">Guia PDF</span>
@@ -492,7 +485,7 @@ export const StockMovements: React.FC = () => {
         </div>
       )}
 
-      {/* Return Product to Stock Modal ("Devolver ao Estoque") */}
+      {/* Modals */}
       {isReturnModalOpen && (
         <ReturnProductModal
           onClose={() => setIsReturnModalOpen(false)}
@@ -503,24 +496,22 @@ export const StockMovements: React.FC = () => {
         />
       )}
 
-      {/* Quick Inventory Adjustment Modal ("Inventário Rápido") */}
       {isInventoryModalOpen && (
         <QuickInventoryModal
           onClose={() => setIsInventoryModalOpen(false)}
           onSuccess={() => {
             setIsInventoryModalOpen(false);
-            alert('Estoque ajustado com sucesso via inventário!');
+            alert('Inventário multilinha registrado com sucesso!');
           }}
         />
       )}
 
-      {/* Customer Checkout Modal ("Saída de Material / Atendimento") */}
       {isCheckoutModalOpen && (
         <CheckoutMaterialModal
           onClose={() => setIsCheckoutModalOpen(false)}
           onSuccess={() => {
             setIsCheckoutModalOpen(false);
-            alert('Saída de material efetuada com sucesso!');
+            alert('Saída multilinha efetuada e Guia de Remessa gerada com sucesso!');
           }}
         />
       )}
@@ -640,42 +631,107 @@ const ReturnProductModal: React.FC<{ onClose: () => void; onSuccess: () => void 
   );
 };
 
-// Modal: Inventário Rápido
+// ==========================================
+// MODAL: Inventário Rápido Multilinha
+// ==========================================
+interface InventoryLine {
+  sku: string;
+  newQuantity: number;
+}
+
 const QuickInventoryModal: React.FC<{ onClose: () => void; onSuccess: () => void }> = ({
   onClose,
   onSuccess,
 }) => {
-  const [sku, setSku] = useState('SKU-00002');
-  const [newTotalQuantity, setNewTotalQuantity] = useState(50);
-  const [notes, setNotes] = useState('Contagem física periódica de inventário.');
-
   const activeWh = erpStore.getActiveWarehouse();
+  const [notes, setNotes] = useState('Contagem física periódica de inventário multilinha.');
+  const [lines, setLines] = useState<InventoryLine[]>([
+    { sku: 'SKU-00001', newQuantity: 50 },
+    { sku: 'SKU-00002', newQuantity: 30 },
+  ]);
 
-  const handleAdjust = (e: React.FormEvent) => {
+  const handleAddLine = () => {
+    setLines([...lines, { sku: '', newQuantity: 10 }]);
+  };
+
+  const handleRemoveLine = (index: number) => {
+    setLines(lines.filter((_, i) => i !== index));
+  };
+
+  const handleSaveInventory = (e: React.FormEvent) => {
     e.preventDefault();
-    const prod = catalogService.getProductBySku(sku);
-    if (!prod || !activeWh || newTotalQuantity < 0) {
-      alert('Produto inválido ou quantidade negativa não permitida.');
+    if (!activeWh || lines.length === 0) {
+      alert('Adicione pelo menos um item ao inventário.');
       return;
     }
 
-    const previousQty = prod.stockLevels[activeWh.id] || 0;
-    const diff = newTotalQuantity - previousQty;
+    const inventoryTableRows: string[][] = [];
+    let totalItemsCount = 0;
 
-    erpStore.addStockMovement({
-      warehouseId: activeWh.id,
-      productId: prod.id,
-      productSku: prod.sku,
-      productName: prod.name,
-      type: 'ajuste_inventario',
-      quantity: newTotalQuantity,
-      unitPriceAOA: prod.basePriceAOA,
-      totalPriceAOA: Math.abs(diff) * prod.basePriceAOA,
-      originReference: 'BALANÇO INVENTÁRIO FÍSICO',
-      requesterOrRecipient: 'Controle de Almoxarifado',
-      executedByUserId: erpStore.currentUser?.id || 'sys',
-      executedByUserName: erpStore.currentUser?.name || 'Responsável Armazém',
-      notes: `${notes} (Saldo anterior: ${previousQty}, Ajustado para: ${newTotalQuantity})`,
+    for (const line of lines) {
+      const prod = catalogService.getProductBySku(line.sku.trim().toUpperCase());
+      if (!prod) {
+        alert(`SKU inválido ou não encontrado: ${line.sku}`);
+        return;
+      }
+      if (line.newQuantity < 0) {
+        alert(`Quantidade não pode ser negativa para o SKU ${prod.sku}`);
+        return;
+      }
+
+      const previousQty = prod.stockLevels[activeWh.id] || 0;
+      const diff = line.newQuantity - previousQty;
+
+      // Grava o movimento no store
+      erpStore.addStockMovement({
+        warehouseId: activeWh.id,
+        productId: prod.id,
+        productSku: prod.sku,
+        productName: prod.name,
+        type: 'ajuste_inventario',
+        quantity: line.newQuantity,
+        unitPriceAOA: prod.basePriceAOA,
+        totalPriceAOA: Math.abs(diff) * prod.basePriceAOA,
+        originReference: 'BALANÇO INVENTÁRIO MULTILINHA',
+        requesterOrRecipient: 'Auditoria de Armazém',
+        executedByUserId: erpStore.currentUser?.id || 'sys',
+        executedByUserName: erpStore.currentUser?.name || 'Responsável Armazém',
+        notes: `${notes} (Anterior: ${previousQty} -> Novo: ${line.newQuantity})`,
+      });
+
+      inventoryTableRows.push([
+        prod.sku,
+        prod.name,
+        previousQty.toString(),
+        line.newQuantity.toString(),
+        formatAOA(line.newQuantity * prod.basePriceAOA),
+      ]);
+      totalItemsCount += line.newQuantity;
+    }
+
+    // Imprimir o Comprovativo / Prova de Inventário Oficial
+    printFormalDocument({
+      title: 'Comprovativo de Inventário Físico Multilinha',
+      documentNumber: `INV-${activeWh.code}-${Date.now().toString().slice(-6)}`,
+      warehouseName: activeWh.name,
+      warehouseProvince: activeWh.province,
+      date: new Date().toLocaleDateString('pt-AO'),
+      authorName: erpStore.currentUser?.name || 'Responsável Armazém',
+      role: 'Auditoria & Estoque',
+      metadata: [
+        { label: 'Unidade Operacional', value: `${activeWh.name} (${activeWh.code})` },
+        { label: 'Total de SKUs Contados', value: `${lines.length} itens` },
+        { label: 'Volume Total Contabilizado', value: `${totalItemsCount} Unidades` },
+        { label: 'Observação Geral', value: notes },
+      ],
+      tables: [
+        {
+          headers: ['SKU', 'Designação do Produto', 'Estoque Anterior', 'Qtd. Física Contada', 'Valor Total (AOA)'],
+          rows: inventoryTableRows,
+        },
+      ],
+      notes: 'Contagem física realizada com auditoria e reajuste automático de saldos no sistema CATASSO ERP.',
+      signatures: ['Responsável de Armazém', 'Auditor de Estoque', 'Gestor Geral'],
     });
 
     onSuccess();
@@ -683,50 +739,86 @@ const QuickInventoryModal: React.FC<{ onClose: () => void; onSuccess: () => void
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-700 rounded-lg max-w-md w-full p-6 text-slate-100 shadow-2xl">
+      <div className="bg-slate-900 border border-slate-700 rounded-lg max-w-2xl w-full p-6 text-slate-100 shadow-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-start justify-between border-b border-slate-800 pb-3">
           <div>
-            <h3 className="font-bold text-base text-white">Inventário Rápido / Adicionar ao Estoque</h3>
-            <p className="text-xs text-slate-400">Atualização do saldo físico verificado em contagem.</p>
+            <h3 className="font-bold text-base text-white">Inventário Rápido Multilinha / Balanço de Vários Produtos</h3>
+            <p className="text-xs text-slate-400">Atualize o saldo de vários SKUs em simultâneo e gere a prova de inventário.</p>
           </div>
           <button type="button" onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
         </div>
 
-        <form onSubmit={handleAdjust} className="py-4 space-y-3 text-xs">
+        <form onSubmit={handleSaveInventory} className="py-4 space-y-4 text-xs">
           <div>
-            <label className="block text-slate-300 font-semibold mb-1">Código SKU do Material *</label>
+            <label className="block text-slate-300 font-semibold mb-1">Observações do Balanço / Inventário</label>
             <input
               type="text"
-              required
-              value={sku}
-              onChange={e => setSku(e.target.value.toUpperCase())}
-              placeholder="Ex: SKU-00002"
-              className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white font-mono focus:border-sky-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-slate-300 font-semibold mb-1">
-              Nova Quantidade Total Física em Estoque * (Não permite negativo)
-            </label>
-            <input
-              type="number"
-              min="0"
-              required
-              value={newTotalQuantity}
-              onChange={e => setNewTotalQuantity(parseInt(e.target.value, 10) || 0)}
-              className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white font-mono focus:border-sky-500"
-            />
-          </div>
-
-          <div>
-            <label className="block text-slate-300 font-semibold mb-1">Observações do Inventário</label>
-            <textarea
-              rows={2}
               value={notes}
               onChange={e => setNotes(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white focus:border-sky-500"
+              className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white"
             />
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="font-semibold text-slate-200">Itens e Quantidades Físicas Contadas:</span>
+              <button
+                type="button"
+                onClick={handleAddLine}
+                className="px-2.5 py-1 bg-emerald-800 hover:bg-emerald-700 text-white rounded text-[11px] flex items-center gap-1 font-semibold"
+              >
+                <Plus className="w-3 h-3" /> Adicionar Produto
+              </button>
+            </div>
+
+            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+              {lines.map((line, idx) => (
+                <div key={idx} className="flex items-center gap-2 bg-slate-950 p-2 rounded border border-slate-800">
+                  <div className="flex-1">
+                    <label className="text-[10px] text-slate-400 uppercase block">SKU</label>
+                    <input
+                      type="text"
+                      required
+                      value={line.sku}
+                      onChange={e => {
+                        const newLines = [...lines];
+                        newLines[idx].sku = e.target.value.toUpperCase();
+                        setLines(newLines);
+                      }}
+                      placeholder="Ex: SKU-00001"
+                      className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-white font-mono"
+                    />
+                  </div>
+
+                  <div className="w-32">
+                    <label className="text-[10px] text-slate-400 uppercase block">Nova Qtd. Física</label>
+                    <input
+                      type="number"
+                      min="0"
+                      required
+                      value={line.newQuantity}
+                      onChange={e => {
+                        const newLines = [...lines];
+                        newLines[idx].newQuantity = parseInt(e.target.value, 10) || 0;
+                        setLines(newLines);
+                      }}
+                      className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-white font-mono"
+                    />
+                  </div>
+
+                  {lines.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveLine(idx)}
+                      className="mt-4 p-1.5 bg-red-950 hover:bg-red-900 text-red-300 rounded"
+                      title="Remover linha"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
 
           <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
@@ -739,9 +831,9 @@ const QuickInventoryModal: React.FC<{ onClose: () => void; onSuccess: () => void
             </button>
             <button
               type="submit"
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-semibold"
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-semibold shadow"
             >
-              Gravar Inventário
+              Gravar e Imprimir Prova de Inventário (PDF)
             </button>
           </div>
         </form>
@@ -750,59 +842,125 @@ const QuickInventoryModal: React.FC<{ onClose: () => void; onSuccess: () => void
   );
 };
 
-// Modal: Saída de Material (Atendimento ao Cliente) com Geração Automática de Requisição e Lista de Usuários do Sistema
+// ==========================================
+// MODAL: Saída de Material Multilinha (Guia de Remessa)
+// ==========================================
+interface CheckoutLine {
+  sku: string;
+  quantity: number;
+}
+
 const CheckoutMaterialModal: React.FC<{ onClose: () => void; onSuccess: () => void }> = ({
   onClose,
   onSuccess,
 }) => {
   const activeWh = erpStore.getActiveWarehouse();
 
-  // Geração automática e sequencial do número de requisição por armazém (ex: REQ-LUA-0001)
+  // Geração automática e sequencial do número de requisição por armazém
   const warehouseMovementsCount = erpStore.movements.filter(
     m => m.warehouseId === activeWh?.id && m.type.startsWith('saida_')
   ).length;
   const nextSeq = warehouseMovementsCount + 1;
   const autoReqCode = `REQ-${activeWh?.code || 'CENTRAL'}-${new Date().getFullYear()}-${String(nextSeq).padStart(4, '0')}`;
 
-  const [sku, setSku] = useState('SKU-00004');
-  const [quantity, setQuantity] = useState(5);
-  
-  // Lista unificada de todos os utilizadores do sistema (clientes, atendentes, gestores de todos os armazéns)
   const allSystemUsers = erpStore.users || [];
-  const defaultUser = allSystemUsers[0]?.name || (erpStore.currentUser?.role === 'cliente' ? erpStore.currentUser.name : 'Sebastião Afonso');
-  
+  const defaultUser = allSystemUsers[0]?.name || 'Sebastião Afonso';
+
   const [clientName, setClientName] = useState(defaultUser);
   const [requisitionRef, setRequisitionRef] = useState(autoReqCode);
-  const [notes, setNotes] = useState('Saída para manutenção preventiva de campo.');
+  const [notes, setNotes] = useState('Saída de múltiplos materiais para operações de campo.');
+  
+  const [lines, setLines] = useState<CheckoutLine[]>([
+    { sku: 'SKU-00004', quantity: 2 },
+    { sku: 'SKU-00005', quantity: 5 },
+  ]);
+
+  const handleAddLine = () => {
+    setLines([...lines, { sku: '', quantity: 1 }]);
+  };
+
+  const handleRemoveLine = (index: number) => {
+    setLines(lines.filter((_, i) => i !== index));
+  };
 
   const handleCheckout = (e: React.FormEvent) => {
     e.preventDefault();
-    const prod = catalogService.getProductBySku(sku);
-    if (!prod || !activeWh || quantity <= 0) {
-      alert('Produto ou quantidade inválida.');
+    if (!activeWh || lines.length === 0) {
+      alert('Adicione pelo menos um produto na requisição.');
       return;
     }
 
-    const currentQty = prod.stockLevels[activeWh.id] || 0;
-    if (quantity > currentQty) {
-      alert(`Quantidade insuficiente em estoque! Disponível: ${currentQty} ${prod.unit}. O estoque não pode ficar negativo.`);
-      return;
+    // 1. Validar estoques de todos os itens antes de efetivar
+    for (const line of lines) {
+      const prod = catalogService.getProductBySku(line.sku.trim().toUpperCase());
+      if (!prod) {
+        alert(`SKU não encontrado no catálogo: ${line.sku}`);
+        return;
+      }
+      const currentQty = prod.stockLevels[activeWh.id] || 0;
+      if (line.quantity > currentQty) {
+        alert(`Estoque insuficiente para o SKU ${prod.sku} (${prod.name}). Disponível: ${currentQty}, Requisitado: ${line.quantity}`);
+        return;
+      }
     }
 
-    erpStore.addStockMovement({
-      warehouseId: activeWh.id,
-      productId: prod.id,
-      productSku: prod.sku,
-      productName: prod.name,
-      type: 'saida_cliente',
-      quantity,
-      unitPriceAOA: prod.basePriceAOA,
-      totalPriceAOA: quantity * prod.basePriceAOA,
-      originReference: requisitionRef,
-      requesterOrRecipient: clientName,
-      executedByUserId: erpStore.currentUser?.id || 'sys',
-      executedByUserName: erpStore.currentUser?.name || 'Atendente',
-      notes,
+    const pdfTableRows: string[][] = [];
+    let grandTotalAOA = 0;
+
+    // 2. Efetivar cada linha como movimento de saída
+    for (const line of lines) {
+      const prod = catalogService.getProductBySku(line.sku.trim().toUpperCase())!;
+      const totalLinePrice = line.quantity * prod.basePriceAOA;
+      grandTotalAOA += totalLinePrice;
+
+      erpStore.addStockMovement({
+        warehouseId: activeWh.id,
+        productId: prod.id,
+        productSku: prod.sku,
+        productName: prod.name,
+        type: 'saida_cliente',
+        quantity: line.quantity,
+        unitPriceAOA: prod.basePriceAOA,
+        totalPriceAOA: totalLinePrice,
+        originReference: requisitionRef,
+        requesterOrRecipient: clientName,
+        executedByUserId: erpStore.currentUser?.id || 'sys',
+        executedByUserName: erpStore.currentUser?.name || 'Atendente',
+        notes,
+      });
+
+      pdfTableRows.push([
+        prod.sku,
+        prod.name,
+        `${line.quantity} ${prod.unit}`,
+        formatAOA(prod.basePriceAOA),
+        formatAOA(totalLinePrice),
+      ]);
+    }
+
+    // 3. Imprimir a Guia de Remessa / Prova de Saída Consolidada Multilinhas
+    printFormalDocument({
+      title: `Guia de Remessa & Saída de Estoque Multilinhas`,
+      documentNumber: requisitionRef,
+      warehouseName: activeWh.name,
+      warehouseProvince: activeWh.province,
+      date: new Date().toLocaleDateString('pt-AO'),
+      authorName: erpStore.currentUser?.name || 'Atendente de Balcão',
+      role: 'Expedição & Faturamento',
+      metadata: [
+        { label: 'Número da Requisição', value: requisitionRef },
+        { label: 'Cliente / Destinatário', value: clientName },
+        { label: 'Unidade Expedidora', value: `${activeWh.name} (${activeWh.code})` },
+        { label: 'Valor Global da Saída', value: formatAOA(grandTotalAOA) },
+      ],
+      tables: [
+        {
+          headers: ['Código SKU', 'Designação do Material', 'Quantidade', 'Preço Unit. (AOA)', 'Total (AOA)'],
+          rows: pdfTableRows,
+        },
+      ],
+      notes: `${notes}\n\nDeclaro que recebi os materiais acima descritos em perfeito estado e quantidade, assumindo total responsabilidade pela sua aplicação e guarda.`,
+      signatures: ['Atendente / Expedidor', 'Cliente / Requisitante (Recebedor)', 'Controle de Saída'],
     });
 
     onSuccess();
@@ -810,41 +968,17 @@ const CheckoutMaterialModal: React.FC<{ onClose: () => void; onSuccess: () => vo
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-700 rounded-lg max-w-md w-full p-6 text-slate-100 shadow-2xl">
+      <div className="bg-slate-900 border border-slate-700 rounded-lg max-w-2xl w-full p-6 text-slate-100 shadow-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-start justify-between border-b border-slate-800 pb-3">
           <div>
-            <h3 className="font-bold text-base text-white">Saída de Material de Estoque</h3>
-            <p className="text-xs text-slate-400">Atendimento a requisições internas e clientes de campo.</p>
+            <h3 className="font-bold text-base text-white">Saída de Múltiplos Produtos (Guia de Remessa)</h3>
+            <p className="text-xs text-slate-400">Atenda vários produtos numa única requisição e imprima a prova formal de saída.</p>
           </div>
           <button type="button" onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
         </div>
 
-        <form onSubmit={handleCheckout} className="py-4 space-y-3 text-xs">
-          <div>
-            <label className="block text-slate-300 font-semibold mb-1">Código SKU *</label>
-            <input
-              type="text"
-              required
-              value={sku}
-              onChange={e => setSku(e.target.value.toUpperCase())}
-              placeholder="Ex: SKU-00004"
-              className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white font-mono focus:border-sky-500"
-            />
-          </div>
-
+        <form onSubmit={handleCheckout} className="py-4 space-y-4 text-xs">
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-slate-300 font-semibold mb-1">Quantidade Requisitada *</label>
-              <input
-                type="number"
-                min="1"
-                required
-                value={quantity}
-                onChange={e => setQuantity(parseInt(e.target.value, 10) || 1)}
-                className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white font-mono focus:border-sky-500"
-              />
-            </div>
-
             <div>
               <label className="block text-slate-300 font-semibold mb-1">N° Requisição (Automático)</label>
               <input
@@ -855,36 +989,97 @@ const CheckoutMaterialModal: React.FC<{ onClose: () => void; onSuccess: () => vo
                 className="w-full bg-slate-950 border border-slate-800 rounded p-2 text-sky-400 font-mono font-bold cursor-not-allowed"
               />
             </div>
+
+            <div>
+              <label className="block text-slate-300 font-semibold mb-1">Cliente / Destinatário *</label>
+              <select
+                value={clientName}
+                onChange={e => setClientName(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white focus:border-sky-500"
+              >
+                {allSystemUsers.length > 0 ? (
+                  allSystemUsers.map(u => (
+                    <option key={u.id} value={u.name}>
+                      {u.name} ({u.role.toUpperCase()})
+                    </option>
+                  ))
+                ) : (
+                  <option value={clientName}>{clientName}</option>
+                )}
+              </select>
+            </div>
           </div>
 
           <div>
-            <label className="block text-slate-300 font-semibold mb-1">Cliente / Destinatário (Usuário do Sistema) *</label>
-            <select
-              value={clientName}
-              onChange={e => setClientName(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white focus:border-sky-500"
-            >
-              {allSystemUsers.length > 0 ? (
-                allSystemUsers.map(u => (
-                  <option key={u.id} value={u.name}>
-                    {u.name} ({u.role.toUpperCase()} - {u.warehouseId || 'Geral'})
-                  </option>
-                ))
-              ) : (
-                <option value={clientName}>{clientName}</option>
-              )}
-            </select>
-            <span className="text-[10px] text-slate-400 mt-0.5 block">Selecione qualquer usuário registado em qualquer armazém da rede.</span>
-          </div>
-
-          <div>
-            <label className="block text-slate-300 font-semibold mb-1">Observações de Saída</label>
-            <textarea
-              rows={2}
+            <label className="block text-slate-300 font-semibold mb-1">Observações / Destino de Campo</label>
+            <input
+              type="text"
               value={notes}
               onChange={e => setNotes(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white focus:border-sky-500"
+              className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white"
             />
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="font-semibold text-slate-200">Produtos Requisitados (Carrinho Multilinhas):</span>
+              <button
+                type="button"
+                onClick={handleAddLine}
+                className="px-2.5 py-1 bg-amber-700 hover:bg-amber-600 text-white rounded text-[11px] flex items-center gap-1 font-semibold"
+              >
+                <Plus className="w-3 h-3" /> Adicionar Produto
+              </button>
+            </div>
+
+            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+              {lines.map((line, idx) => (
+                <div key={idx} className="flex items-center gap-2 bg-slate-950 p-2 rounded border border-slate-800">
+                  <div className="flex-1">
+                    <label className="text-[10px] text-slate-400 uppercase block">Código SKU *</label>
+                    <input
+                      type="text"
+                      required
+                      value={line.sku}
+                      onChange={e => {
+                        const newLines = [...lines];
+                        newLines[idx].sku = e.target.value.toUpperCase();
+                        setLines(newLines);
+                      }}
+                      placeholder="Ex: SKU-00001"
+                      className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-white font-mono"
+                    />
+                  </div>
+
+                  <div className="w-32">
+                    <label className="text-[10px] text-slate-400 uppercase block">Quantidade *</label>
+                    <input
+                      type="number"
+                      min="1"
+                      required
+                      value={line.quantity}
+                      onChange={e => {
+                        const newLines = [...lines];
+                        newLines[idx].quantity = parseInt(e.target.value, 10) || 1;
+                        setLines(newLines);
+                      }}
+                      className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-white font-mono"
+                    />
+                  </div>
+
+                  {lines.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveLine(idx)}
+                      className="mt-4 p-1.5 bg-red-950 hover:bg-red-900 text-red-300 rounded"
+                      title="Remover linha"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
 
           <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
@@ -899,7 +1094,7 @@ const CheckoutMaterialModal: React.FC<{ onClose: () => void; onSuccess: () => vo
               type="submit"
               className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded text-xs font-semibold shadow"
             >
-              Registrar Saída
+              Efetuar Saída e Gerar Guia de Remessa (PDF)
             </button>
           </div>
         </form>
