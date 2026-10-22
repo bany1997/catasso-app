@@ -1128,13 +1128,23 @@ constructor() {
     return newTransfer;
   }
 
-  public approveTransfer(transferId: string): boolean {
+public approveTransfer(transferId: string, approvalData?: { items: any[]; transportDetails: any }): boolean {
     const trf = this.transfers.find(t => t.id === transferId);
     if (!trf) return false;
     trf.status = 'em_transito';
     trf.approvalDate = new Date().toISOString();
 
-    // Deduct stock from origin warehouse
+    // Se o gestor ajustou quantidades ou informou detalhes do motorista no modal
+    if (approvalData) {
+      if (approvalData.items && approvalData.items.length > 0) {
+        trf.items = approvalData.items;
+      }
+      if (approvalData.transportDetails) {
+        trf.transportDetails = approvalData.transportDetails;
+      }
+    }
+
+    // Deduct stock from origin warehouse based on the actual approved quantities
     trf.items.forEach(item => {
       const prod = catalogService.getProductById(item.productId);
       if (prod) {
@@ -1155,7 +1165,7 @@ constructor() {
           requesterOrRecipient: `Armazém Destino: ${this.warehouses.find(w => w.id === trf.destinationWarehouseId)?.name}`,
           executedByUserId: this.currentUser?.id || 'sys',
           executedByUserName: this.currentUser?.name || 'Sistema',
-          notes: 'Saída por transferência inter-armazém aprovada',
+          notes: 'Saída por transferência inter-armazém aprovada e despachada',
         });
       }
     });
@@ -1164,18 +1174,33 @@ constructor() {
     return true;
   }
 
-  public receiveTransfer(transferId: string): boolean {
+  public receiveTransfer(transferId: string, receiptData?: { receivedItems: any[] }): boolean {
     const trf = this.transfers.find(t => t.id === transferId);
-    if (!trf) return false;
+    if (!trf || trf.status === 'recebida') return false;
     trf.status = 'recebida';
     trf.deliveryDate = new Date().toISOString();
 
-    // Ingest stock into destination warehouse
-    trf.items.forEach(item => {
+    // Se o operador inseriu quantidades reais na conferência física de entrada
+    let itemsToIngest = trf.items;
+    if (receiptData && receiptData.receivedItems && receiptData.receivedItems.length > 0) {
+      itemsToIngest = receiptData.receivedItems.map(r => {
+        const originalItem = trf.items.find(i => i.sku === r.sku) || r;
+        return {
+          ...originalItem,
+          quantity: r.receivedQuantity, // Substitui pela quantidade real contada
+          receivedQuantity: r.receivedQuantity,
+        };
+      });
+      trf.items = itemsToIngest; // Atualiza no objeto da transferência
+    }
+
+    // Ingest stock into destination warehouse using exact counted quantities
+    itemsToIngest.forEach(item => {
       const prod = catalogService.getProductById(item.productId);
       if (prod) {
+        const qtyToIngest = (item as any).receivedQuantity !== undefined ? (item as any).receivedQuantity : item.quantity;
         const cur = prod.stockLevels[trf.destinationWarehouseId] || 0;
-        catalogService.updateStockQuantity(item.productId, trf.destinationWarehouseId, cur + item.quantity);
+        catalogService.updateStockQuantity(item.productId, trf.destinationWarehouseId, cur + qtyToIngest);
 
         // Movement record for inbound
         this.addStockMovement({
@@ -1184,14 +1209,14 @@ constructor() {
           productSku: item.sku,
           productName: item.productName,
           type: 'entrada_transferencia',
-          quantity: item.quantity,
+          quantity: qtyToIngest,
           unitPriceAOA: prod.basePriceAOA,
-          totalPriceAOA: item.quantity * prod.basePriceAOA,
+          totalPriceAOA: qtyToIngest * prod.basePriceAOA,
           originReference: trf.transferCode,
           requesterOrRecipient: `Armazém Origem: ${this.warehouses.find(w => w.id === trf.originWarehouseId)?.name}`,
           executedByUserId: this.currentUser?.id || 'sys',
           executedByUserName: this.currentUser?.name || 'Sistema',
-          notes: 'Recebimento de transferência inter-armazém',
+          notes: 'Recebimento e conferência física de transferência inter-armazém',
         });
       }
     });
