@@ -14,14 +14,17 @@ import {
   CheckCircle,
   Plus,
   Search,
+  MapPin,
+  Maximize2,
 } from 'lucide-react';
 
 export const UserManagement: React.FC = () => {
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
   const [isAddWarehouseOpen, setIsAddWarehouseOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editingWarehouse, setEditingWarehouse] = useState<Warehouse | null>(null); // Estado para editar armazém
   const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
-  const [searchQuery, setSearchQuery] = useState(''); // Estado para a barra de pesquisa
+  const [searchQuery, setSearchQuery] = useState('');
 
   // New User Form State
   const [username, setUsername] = useState('');
@@ -48,7 +51,6 @@ export const UserManagement: React.FC = () => {
 
   // Role visibility rules for users list + Search Query filtering
   const visibleUsers = erpStore.users.filter(u => {
-    // Escopo de visibilidade por cargo
     let inScope = false;
     if (isSuperadmin) {
       inScope = true;
@@ -58,7 +60,6 @@ export const UserManagement: React.FC = () => {
 
     if (!inScope) return false;
 
-    // Filtro da Barra de Pesquisa
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       const matchName = u.name.toLowerCase().includes(q);
@@ -71,7 +72,6 @@ export const UserManagement: React.FC = () => {
     return true;
   });
 
-  // Password visibility rule
   const canSeePassword = (targetUser: User): boolean => {
     if (!currentUser) return false;
     if (currentUser.id === targetUser.id) return true;
@@ -114,7 +114,6 @@ export const UserManagement: React.FC = () => {
     e.preventDefault();
     if (!editingUser) return;
 
-    // Regra de segurança: Se o utilizador alvo é superadmin, apenas outro superadmin pode editar
     if (editingUser.role === 'superadmin' && !isSuperadmin) {
       alert('Acesso negado: Apenas um Superadministrador pode editar contas de Superadministrador.');
       return;
@@ -127,7 +126,7 @@ export const UserManagement: React.FC = () => {
 
   const handleDeleteUser = (userId: string, targetRole: string) => {
     if (targetRole === 'superadmin' && !isSuperadmin) {
-      alert('Acesso negado: Contas de Superadministrador não podem ser eliminadas por utilizadores comuns.');
+      alert('Acesso negado: Contas de Superadministrador não podem ser eliminadas.');
       return;
     }
     if (confirm('Tem certeza de que deseja excluir este utilizador do sistema?')) {
@@ -158,6 +157,16 @@ export const UserManagement: React.FC = () => {
     alert('Novo armazém criado com sucesso pelo Superadministrador!');
   };
 
+  // Salvar Edição do Armazém
+  const handleSaveEditWarehouse = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingWarehouse) return;
+
+    erpStore.updateWarehouse(editingWarehouse.id, editingWarehouse);
+    setEditingWarehouse(null);
+    alert('Detalhes do armazém atualizados com sucesso!');
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -165,10 +174,10 @@ export const UserManagement: React.FC = () => {
         <div>
           <h1 className="text-xl font-bold text-white flex items-center gap-2">
             <Users className="w-5 h-5 text-sky-400" />
-            <span>Gestão de Utilizadores & Credenciais de Acesso</span>
+            <span>Gestão de Utilizadores & Unidades Logísticas</span>
           </h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            Administração dos 7 níveis de acesso corporativos, atribuição de armazéns e controle de senhas com proteção hierárquica.
+            Administração dos níveis de acesso corporativos, credenciais de senha e controlo da rede de armazéns em Angola.
           </p>
         </div>
 
@@ -177,10 +186,10 @@ export const UserManagement: React.FC = () => {
             <button
               type="button"
               onClick={() => setIsAddWarehouseOpen(true)}
-              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded text-xs font-semibold flex items-center gap-1.5"
+              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded text-xs font-semibold flex items-center gap-1.5 shadow"
             >
               <Building2 className="w-3.5 h-3.5 text-sky-400" />
-              <span>Criar Novo Armazém (Superadmin)</span>
+              <span>Criar Novo Armazém</span>
             </button>
           )}
 
@@ -194,6 +203,66 @@ export const UserManagement: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* SEÇÃO EXCLUSIVA PARA SUPERADMIN: LISTAGEM E EDIÇÃO DE ARMAZÉNS */}
+      {isSuperadmin && (
+        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden mb-6">
+          <div className="p-4 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
+            <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+              <Building2 className="w-4 h-4 text-sky-400" />
+              <span>Rede de Armazéns & Centros Logísticos ({erpStore.warehouses.length})</span>
+            </h2>
+            <span className="text-[11px] text-slate-400">Gerenciamento exclusivo da diretoria</span>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-slate-950 text-slate-400 border-b border-slate-800 font-semibold">
+                  <th className="py-2.5 px-3">Código</th>
+                  <th className="py-2.5 px-3">Nome do Armazém</th>
+                  <th className="py-2.5 px-3">Província</th>
+                  <th className="py-2.5 px-3">Endereço</th>
+                  <th className="py-2.5 px-3">Capacidade (m²)</th>
+                  <th className="py-2.5 px-3 text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60">
+                {erpStore.warehouses.map(wh => (
+                  <tr key={wh.id} className="hover:bg-slate-800/40">
+                    <td className="py-3 px-3 font-mono font-bold text-sky-400 whitespace-nowrap">
+                      {wh.code}
+                    </td>
+                    <td className="py-3 px-3 font-semibold text-white">
+                      {wh.name}
+                    </td>
+                    <td className="py-3 px-3 text-slate-300">
+                      {wh.province}
+                    </td>
+                    <td className="py-3 px-3 text-slate-400">
+                      {wh.address}
+                    </td>
+                    <td className="py-3 px-3 font-mono text-emerald-400 whitespace-nowrap">
+                      {wh.totalCapacityM2?.toLocaleString()} m²
+                    </td>
+                    <td className="py-3 px-3 text-right whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={() => setEditingWarehouse({ ...wh })}
+                        className="p-1.5 bg-slate-800 hover:bg-slate-700 text-sky-400 rounded transition-colors inline-flex items-center gap-1"
+                        title="Editar Detalhes do Armazém"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                        <span className="text-[10px]">Editar Armazém</span>
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Users Table & Search Bar */}
       <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
@@ -240,8 +309,6 @@ export const UserManagement: React.FC = () => {
                   const wh = erpStore.warehouses.find(w => w.id === u.warehouseId);
                   const isPasswordVisible = showPasswords[u.id];
                   const canSee = canSeePassword(u);
-
-                  // Verificar se o utilizador atual pode editar este registo (Superadmin apenas para contas superadmin)
                   const canEditThisUser = u.role !== 'superadmin' || isSuperadmin;
 
                   const roleBadges: Record<string, string> = {
@@ -357,6 +424,90 @@ export const UserManagement: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {/* Modal: Editar Armazém */}
+      {editingWarehouse && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-lg max-w-lg w-full p-6 text-slate-100 shadow-2xl">
+            <div className="flex items-start justify-between border-b border-slate-800 pb-3">
+              <div>
+                <span className="text-xs text-sky-400 font-mono font-bold">{editingWarehouse.code}</span>
+                <h3 className="font-bold text-base text-white">Editar Detalhes do Armazém</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingWarehouse(null)}
+                className="text-slate-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditWarehouse} className="py-4 space-y-3.5 text-xs">
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Nome do Armazém</label>
+                <input
+                  type="text"
+                  required
+                  value={editingWarehouse.name}
+                  onChange={e => setEditingWarehouse({ ...editingWarehouse, name: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Província</label>
+                  <input
+                    type="text"
+                    required
+                    value={editingWarehouse.province}
+                    onChange={e => setEditingWarehouse({ ...editingWarehouse, province: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Capacidade Total (m²)</label>
+                  <input
+                    type="number"
+                    min="500"
+                    value={editingWarehouse.totalCapacityM2 || 5000}
+                    onChange={e => setEditingWarehouse({ ...editingWarehouse, totalCapacityM2: parseInt(e.target.value, 10) || 5000 })}
+                    className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white font-mono"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Endereço / Localização</label>
+                <input
+                  type="text"
+                  value={editingWarehouse.address || ''}
+                  onChange={e => setEditingWarehouse({ ...editingWarehouse, address: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingWarehouse(null)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded text-xs font-semibold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded text-xs font-semibold"
+                >
+                  Salvar Alterações
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Add User Modal */}
       {isAddUserOpen && (
