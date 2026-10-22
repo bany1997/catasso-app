@@ -5,13 +5,8 @@ import {
   MapPin,
   Image as ImageIcon,
   Plus,
-  Edit2,
-  CheckCircle,
-  Building2,
   Layers,
-  Upload,
   Pencil,
-  Trash2,
 } from 'lucide-react';
 
 export const WarehouseLayout: React.FC = () => {
@@ -22,7 +17,7 @@ export const WarehouseLayout: React.FC = () => {
   const [newImageUrl, setNewImageUrl] = useState('');
   const [imageFileBase64, setImageFileBase64] = useState('');
 
-  // Location Form State (Usado para Criar e Editar)
+  // Location Form State
   const [aisle, setAisle] = useState('Corredor D');
   const [rack, setRack] = useState('Estante 01');
   const [shelf, setShelf] = useState('Nível 1');
@@ -42,7 +37,6 @@ export const WarehouseLayout: React.FC = () => {
   // Locations for this active warehouse
   const locations = erpStore.locations.filter(l => l.warehouseId === activeWh?.id);
 
-  // Open modal for NEW location
   const handleOpenAddModal = () => {
     setEditingLocation(null);
     setAisle('Corredor D');
@@ -55,7 +49,6 @@ export const WarehouseLayout: React.FC = () => {
     setIsAddLocationOpen(true);
   };
 
-  // Open modal for EDITING location
   const handleOpenEditModal = (loc: StorageLocation) => {
     setEditingLocation(loc);
     setAisle(loc.aisle);
@@ -68,13 +61,11 @@ export const WarehouseLayout: React.FC = () => {
     setIsAddLocationOpen(true);
   };
 
-  // Save (Create or Update) Location
   const handleSaveLocation = (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeWh) return;
 
     if (editingLocation) {
-      // UPDATE existing location
       erpStore.updateStorageLocation(editingLocation.id, {
         aisle,
         rack,
@@ -86,7 +77,6 @@ export const WarehouseLayout: React.FC = () => {
       });
       alert(`Endereço ${binCode.toUpperCase()} atualizado com sucesso!`);
     } else {
-      // CREATE new location
       erpStore.addStorageLocation({
         warehouseId: activeWh.id,
         aisle,
@@ -104,7 +94,6 @@ export const WarehouseLayout: React.FC = () => {
     setEditingLocation(null);
   };
 
-  // Layout Image Upload via FileReader (Base64)
   const handleLayoutImageFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -138,7 +127,6 @@ export const WarehouseLayout: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-white flex items-center gap-2">
@@ -176,7 +164,6 @@ export const WarehouseLayout: React.FC = () => {
         </div>
       </div>
 
-      {/* Visual Blueprint / Layout Viewer */}
       <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
         <div className="p-4 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -202,7 +189,6 @@ export const WarehouseLayout: React.FC = () => {
             />
             <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent pointer-events-none" />
 
-            {/* Interactive Zone Overlay */}
             <div className="absolute top-4 left-4 bg-slate-900/90 border border-slate-700/80 p-3 rounded-xl text-xs backdrop-blur-sm shadow-xl">
               <div className="font-bold text-white flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -219,7 +205,6 @@ export const WarehouseLayout: React.FC = () => {
         </div>
       </div>
 
-      {/* Storage Bins Table */}
       <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
         <div className="p-4 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
           <h2 className="text-sm font-bold text-white uppercase tracking-wider">
@@ -296,7 +281,6 @@ export const WarehouseLayout: React.FC = () => {
         </div>
       </div>
 
-      {/* Modal Criar / Editar Posição */}
       {isAddLocationOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 text-slate-100 shadow-2xl">
@@ -429,9 +413,8 @@ export const WarehouseLayout: React.FC = () => {
             </form>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Modal Alterar Imagem do Layout */}
       {isChangeImageOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-md w-full p-6 text-slate-100 shadow-2xl">
