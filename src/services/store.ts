@@ -936,6 +936,7 @@ constructor() {
   }
 
   // --- Receiving & Stock Ingestion ---
+// --- Receiving & Stock Ingestion ---
   public completeReceivingInspection(params: {
     orderId: string;
     shipmentId?: string;
@@ -944,7 +945,7 @@ constructor() {
       sku: string;
       productName: string;
       quantityExpected: number;
-      quantityReceived: number;
+      quantityReceived: number; // Quantidade recebida NESTA entrega
       condition: 'conforme' | 'danificado' | 'incompleto' | 'divergente';
       batchNumber?: string;
       notes?: string;
@@ -953,6 +954,15 @@ constructor() {
   }): { success: boolean; rncCreated?: RNCReport; orderUpdated?: PurchaseOrder } {
     const po = this.purchaseOrders.find(p => p.id === params.orderId);
     if (!po) return { success: false };
+
+    // 1. SOMA ACUMULADA: Atualiza o acumulado de quantidade já recebida no pedido
+    params.itemsChecked.forEach(checkedItem => {
+      const poItem = po.items.find(i => i.productId === checkedItem.productId);
+      if (poItem) {
+        const currentTotalReceived = poItem.quantityReceived || 0;
+        poItem.quantityReceived = currentTotalReceived + checkedItem.quantityReceived;
+      }
+    });
 
     const nonConformingItems = params.itemsChecked.filter(
       item => item.condition !== 'conforme' || item.quantityReceived < item.quantityExpected
@@ -981,7 +991,7 @@ constructor() {
           sku: i.sku,
           productName: i.productName,
           quantityAffected: Math.max(1, i.quantityExpected - i.quantityReceived),
-          defectDetail: `Condição: ${i.condition}. Esperado: ${i.quantityExpected}, Recebido: ${i.quantityReceived}. ${i.notes || ''}`,
+          defectDetail: `Condição: ${i.condition}. Esperado: ${i.quantityExpected}, Recebido nesta entrega: ${i.quantityReceived}. ${i.notes || ''}`,
         })),
       };
       this.rncs.unshift(rncReport);
@@ -1009,8 +1019,10 @@ constructor() {
       }
     });
 
-    // Update order status: If fully received without discrepancies -> "comprado"
-    if (nonConformingItems.length === 0) {
+    // 2. VERIFICAÇÃO DE CONCLUSÃO TOTAL: Se a soma acumulada de todos os itens atingiu ou superou o solicitado -> "comprado"
+    const isFullyCompleted = po.items.every(i => (i.quantityReceived || 0) >= i.quantityRequested);
+
+    if (isFullyCompleted) {
       po.status = 'comprado';
     } else {
       po.status = 'recebido_parcial';
