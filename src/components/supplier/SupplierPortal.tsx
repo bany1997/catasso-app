@@ -119,7 +119,7 @@ export const SupplierPortal: React.FC = () => {
       return;
     }
 
-    erpStore.createShipment({
+erpStore.createShipment({
       orderId: selectedOrderToDispatch.id,
       orderNumber: selectedOrderToDispatch.orderNumber,
       warehouseId: selectedOrderToDispatch.warehouseId,
@@ -144,7 +144,7 @@ export const SupplierPortal: React.FC = () => {
           uploadedBy: currentUser?.name || 'Fornecedor',
           uploadedAt: new Date().toISOString(),
           fileSize: '1.8 MB',
-          fileDataUrl: attachedFileBase64 || undefined,
+          fileDataUrl: attachedFileBase64 || undefined, // Garante gravação real
         },
       ] : [],
     });
