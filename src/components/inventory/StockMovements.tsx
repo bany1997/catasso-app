@@ -159,6 +159,45 @@ export const StockMovements: React.FC = () => {
     });
   };
 
+  // Imprimir Comprovativo Individual de Saída (com espaço para assinaturas do Atendente e do Cliente)
+  const handlePrintIndividualCheckout = (m: StockMovement) => {
+    printFormalDocument({
+      title: `Guia de Remessa & Saída de Estoque: ${m.productName}`,
+      documentNumber: m.originReference || m.movementCode,
+      warehouseName: activeWh?.name || 'Armazém Central',
+      warehouseProvince: activeWh?.province || 'Luanda',
+      date: new Date(m.createdAt).toLocaleDateString('pt-AO'),
+      authorName: m.executedByUserName,
+      role: 'Atendente / Operador de Armazém',
+      metadata: [
+        { label: 'Código da Requisição', value: m.originReference || 'REQ-BALCAO' },
+        { label: 'Código do Movimento', value: m.movementCode },
+        { label: 'Código SKU do Material', value: m.productSku },
+        { label: 'Descrição do Produto', value: m.productName },
+        { label: 'Quantidade Retirada', value: `${m.quantity} UN` },
+        { label: 'Preço Unitário', value: formatAOA(m.unitPriceAOA) },
+        { label: 'Valor Total da Saída', value: formatAOA(m.totalPriceAOA) },
+        { label: 'Cliente / Requisitante Destino', value: m.requesterOrRecipient || 'Cliente Geral' },
+      ],
+      tables: [
+        {
+          headers: ['Item SKU', 'Designação do Material', 'Quantidade', 'Preço Unit. (AOA)', 'Total (AOA)'],
+          rows: [
+            [
+              m.productSku,
+              m.productName,
+              `${m.quantity} UN`,
+              formatAOA(m.unitPriceAOA),
+              formatAOA(m.totalPriceAOA),
+            ],
+          ],
+        },
+      ],
+      notes: m.notes || 'Material entregue em conformidade. O recebedor confere as quantidades e assume total responsabilidade pelo uso e guarda do ativo.',
+      signatures: ['Atendente / Expedidor', 'Cliente / Requisitante (Recebedor)', 'Conferência de Segurança'],
+    });
+  };
+
   return (
     <div className="space-y-4">
       {/* Top Header */}
@@ -392,12 +431,13 @@ export const StockMovements: React.FC = () => {
                     <th className="py-2.5 px-3 text-right">Total (AOA)</th>
                     <th className="py-2.5 px-3">N° Requisição</th>
                     <th className="py-2.5 px-3">Atendente</th>
+                    <th className="py-2.5 px-3 text-center">Guia PDF</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
                   {saidasList.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="py-8 text-center text-slate-500">
+                      <td colSpan={10} className="py-8 text-center text-slate-500">
                         Nenhuma saída registrada ou encontrada.
                       </td>
                     </tr>
@@ -430,6 +470,17 @@ export const StockMovements: React.FC = () => {
                         </td>
                         <td className="py-3 px-3 text-slate-400 whitespace-nowrap">
                           {m.executedByUserName}
+                        </td>
+                        <td className="py-3 px-3 text-center whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={() => handlePrintIndividualCheckout(m)}
+                            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-sky-400 rounded transition-colors inline-flex items-center gap-1"
+                            title="Imprimir Comprovativo Individual de Saída (Guia de Remessa)"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                            <span className="text-[10px]">Guia PDF</span>
+                          </button>
                         </td>
                       </tr>
                     ))
@@ -699,22 +750,30 @@ const QuickInventoryModal: React.FC<{ onClose: () => void; onSuccess: () => void
   );
 };
 
-// Modal: Saída de Material (Atendimento ao Cliente)
+// Modal: Saída de Material (Atendimento ao Cliente) com Geração Automática de Requisição e Lista de Usuários do Sistema
 const CheckoutMaterialModal: React.FC<{ onClose: () => void; onSuccess: () => void }> = ({
   onClose,
   onSuccess,
 }) => {
+  const activeWh = erpStore.getActiveWarehouse();
+
+  // Geração automática e sequencial do número de requisição por armazém (ex: REQ-LUA-0001)
+  const warehouseMovementsCount = erpStore.movements.filter(
+    m => m.warehouseId === activeWh?.id && m.type.startsWith('saida_')
+  ).length;
+  const nextSeq = warehouseMovementsCount + 1;
+  const autoReqCode = `REQ-${activeWh?.code || 'CENTRAL'}-${new Date().getFullYear()}-${String(nextSeq).padStart(4, '0')}`;
+
   const [sku, setSku] = useState('SKU-00004');
   const [quantity, setQuantity] = useState(5);
-  const [clientName, setClientName] = useState(
-    erpStore.currentUser?.role === 'cliente'
-      ? erpStore.currentUser.name
-      : 'Sebastião Afonso (Operações Campo)'
-  );
-  const [requisitionRef, setRequisitionRef] = useState(`REQ-${Date.now().toString().slice(-4)}`);
+  
+  // Lista unificada de todos os utilizadores do sistema (clientes, atendentes, gestores de todos os armazéns)
+  const allSystemUsers = erpStore.users || [];
+  const defaultUser = allSystemUsers[0]?.name || (erpStore.currentUser?.role === 'cliente' ? erpStore.currentUser.name : 'Sebastião Afonso');
+  
+  const [clientName, setClientName] = useState(defaultUser);
+  const [requisitionRef, setRequisitionRef] = useState(autoReqCode);
   const [notes, setNotes] = useState('Saída para manutenção preventiva de campo.');
-
-  const activeWh = erpStore.getActiveWarehouse();
 
   const handleCheckout = (e: React.FormEvent) => {
     e.preventDefault();
@@ -787,26 +846,35 @@ const CheckoutMaterialModal: React.FC<{ onClose: () => void; onSuccess: () => vo
             </div>
 
             <div>
-              <label className="block text-slate-300 font-semibold mb-1">N° Requisição</label>
+              <label className="block text-slate-300 font-semibold mb-1">N° Requisição (Automático)</label>
               <input
                 type="text"
                 required
+                readOnly
                 value={requisitionRef}
-                onChange={e => setRequisitionRef(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white font-mono focus:border-sky-500"
+                className="w-full bg-slate-950 border border-slate-800 rounded p-2 text-sky-400 font-mono font-bold cursor-not-allowed"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-slate-300 font-semibold mb-1">Nome do Cliente / Requisitante *</label>
-            <input
-              type="text"
-              required
+            <label className="block text-slate-300 font-semibold mb-1">Cliente / Destinatário (Usuário do Sistema) *</label>
+            <select
               value={clientName}
               onChange={e => setClientName(e.target.value)}
               className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white focus:border-sky-500"
-            />
+            >
+              {allSystemUsers.length > 0 ? (
+                allSystemUsers.map(u => (
+                  <option key={u.id} value={u.name}>
+                    {u.name} ({u.role.toUpperCase()} - {u.warehouseId || 'Geral'})
+                  </option>
+                ))
+              ) : (
+                <option value={clientName}>{clientName}</option>
+              )}
+            </select>
+            <span className="text-[10px] text-slate-400 mt-0.5 block">Selecione qualquer usuário registado em qualquer armazém da rede.</span>
           </div>
 
           <div>
@@ -829,7 +897,7 @@ const CheckoutMaterialModal: React.FC<{ onClose: () => void; onSuccess: () => vo
             </button>
             <button
               type="submit"
-              className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded text-xs font-semibold"
+              className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded text-xs font-semibold shadow"
             >
               Registrar Saída
             </button>
