@@ -248,7 +248,6 @@ export const ReceivingInspection: React.FC = () => {
     this.saveState();
     return { success: true, rncCreated: rncReport, orderUpdated: po };
   }
-  };
 
   // Print Labels
   const handlePrintReceivedLabels = () => {
