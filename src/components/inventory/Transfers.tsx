@@ -30,7 +30,7 @@ export const Transfers: React.FC = () => {
   const currentUser = erpStore.currentUser;
   const activeWh = erpStore.getActiveWarehouse();
 
-  // Filter transfers involving active warehouse (or all for superadmin)
+  // Filtro de transferências do armazém ativo ou todas para superadmin
   const transfers = erpStore.transfers.filter(trf => {
     if (currentUser?.role === 'superadmin') return true;
     return trf.originWarehouseId === activeWh?.id || trf.destinationWarehouseId === activeWh?.id;
@@ -60,8 +60,9 @@ export const Transfers: React.FC = () => {
       ],
       tables: [
         {
-          headers: ['SKU', 'Designação do Material', 'Qtd. Solicitada / Enviada', 'Qtd. Efetiva Recebida', 'Estado'],
+          headers: ['SKU', 'Designação do Material', 'Qtd. Solicitada', 'Qtd. Efetiva Recebida', 'Estado'],
           rows: trf.items.map(i => {
+            // Garante que a guia mostra sempre o valor real recebido ou o enviado
             const finalQty = (i as any).receivedQuantity !== undefined ? (i as any).receivedQuantity : i.quantity;
             return [
               i.sku,
@@ -324,7 +325,7 @@ export const Transfers: React.FC = () => {
         />
       )}
 
-      {/* MODAL 2: Armazém Remetente Analisa Estoque e Associa Motorista */}
+      {/* MODAL 2: Análise e Despacho */}
       {approvingTransfer && (
         <ApproveTransferModal
           transfer={approvingTransfer}
@@ -336,19 +337,19 @@ export const Transfers: React.FC = () => {
         />
       )}
 
-      {/* MODAL 3: Conferência Discriminada de Entrada Item por Item na Recepção */}
+      {/* MODAL 3: Conferência Discriminada de Entrada no Destino */}
       {receivingTransfer && (
         <ReceiveCheckModal
           transfer={receivingTransfer}
           onClose={() => setReceivingTransfer(null)}
           onSuccess={() => {
             setReceivingTransfer(null);
-            alert('Conferência concluída! Os produtos deram entrada discriminada com sucesso no estoque do armazém.');
+            alert('Conferência concluída com sucesso! Entrada única efetuada no estoque do armazém de destino.');
           }}
         />
       )}
 
-      {/* MODAL 4: Reprovar / Rejeitar Transferência (com justificativa) */}
+      {/* MODAL 4: Reprovar / Rejeitar Transferência */}
       {rejectingTransfer && (
         <RejectTransferModal
           transfer={rejectingTransfer}
@@ -555,7 +556,7 @@ const NewMultiTransferModal: React.FC<{ onClose: () => void; onSuccess: () => vo
 };
 
 // ==========================================
-// MODAL 2: Análise de Estoque na Origem & Expedição
+// MODAL 2: Análise e Despacho na Origem
 // ==========================================
 const ApproveTransferModal: React.FC<{
   transfer: WarehouseTransfer;
@@ -592,22 +593,33 @@ const ApproveTransferModal: React.FC<{
       return;
     }
 
-    erpStore.approveTransfer(transfer.id, {
-      items: itemsToShip.map(i => ({
-        productId: i.productId,
-        sku: i.sku,
-        productName: i.productName,
-        quantity: i.approvedQty,
-      })),
-      transportDetails: {
-        carrier,
-        driverName,
-        driverPhone,
-        vehiclePlate,
-        estimatedArrival,
-      },
+    // Baixa o estoque físico diretamente no armazém de origem
+    itemsToShip.forEach(i => {
+      const prod = catalogService.getProductById(i.productId);
+      if (prod) {
+        const currentStock = prod.stockLevels[transfer.originWarehouseId] || 0;
+        const newStock = Math.max(0, currentStock - i.approvedQty);
+        catalogService.updateStock(i.productId, transfer.originWarehouseId, newStock);
+      }
     });
 
+    // Atualiza o estado da transferência no store
+    transfer.status = 'em_transito';
+    transfer.items = itemsToShip.map(i => ({
+      productId: i.productId,
+      sku: i.sku,
+      productName: i.productName,
+      quantity: i.approvedQty, // Quantidade efetivamente enviada
+    }));
+    transfer.transportDetails = {
+      carrier,
+      driverName,
+      driverPhone,
+      vehiclePlate,
+      estimatedArrival,
+    };
+
+    erpStore.saveToStorage();
     onSuccess();
   };
 
@@ -750,7 +762,7 @@ const ApproveTransferModal: React.FC<{
 };
 
 // ==========================================
-// MODAL 3: Conferência Discriminada na Recepção (Item por Item sem Duplicação)
+// MODAL 3: Conferência Discriminada no Destino (Sem Duplicação)
 // ==========================================
 const ReceiveCheckModal: React.FC<{
   transfer: WarehouseTransfer;
@@ -760,23 +772,34 @@ const ReceiveCheckModal: React.FC<{
   const [receivedItems, setReceivedItems] = useState(
     transfer.items.map(item => ({
       ...item,
-      receivedQuantity: item.quantity, // Sugere por defeito a quantidade enviada na guia
+      receivedQuantity: item.quantity, // Sugere por defeito o que foi enviado
     }))
   );
 
   const handleConfirmReceipt = (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Grava exatamente a quantidade digitada sem duplicações
-    erpStore.receiveTransfer(transfer.id, {
-      receivedItems: receivedItems.map(i => ({
-        productId: i.productId,
-        sku: i.sku,
-        productName: i.productName,
-        receivedQuantity: i.receivedQuantity,
-      })),
+    // 1. Dá entrada única e exclusiva no estoque do armazém de destino com a quantidade contada
+    receivedItems.forEach(i => {
+      const prod = catalogService.getProductById(i.productId);
+      if (prod) {
+        const currentStock = prod.stockLevels[transfer.destinationWarehouseId] || 0;
+        const newStock = currentStock + i.receivedQuantity;
+        catalogService.updateStock(i.productId, transfer.destinationWarehouseId, newStock);
+      }
     });
 
+    // 2. Atualiza os dados da transferência (armazena receivedQuantity para constar na guia e histórico)
+    transfer.status = 'recebida';
+    transfer.items = receivedItems.map(i => ({
+      productId: i.productId,
+      sku: i.sku,
+      productName: i.productName,
+      quantity: i.quantity, // Mantém histórico enviado
+      receivedQuantity: i.receivedQuantity, // Quantidade física real recebida
+    } as any));
+
+    erpStore.saveToStorage();
     onSuccess();
   };
 
