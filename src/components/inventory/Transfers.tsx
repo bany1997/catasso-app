@@ -16,9 +16,7 @@ import {
   Send,
   Boxes,
   Trash2,
-  Phone,
-  UserCheck,
-  Calendar,
+  XCircle,
   AlertTriangle,
   Info,
 } from 'lucide-react';
@@ -26,6 +24,8 @@ import {
 export const Transfers: React.FC = () => {
   const [isNewTransferOpen, setIsNewTransferOpen] = useState(false);
   const [approvingTransfer, setApprovingTransfer] = useState<WarehouseTransfer | null>(null);
+  const [receivingTransfer, setReceivingTransfer] = useState<WarehouseTransfer | null>(null);
+  const [rejectingTransfer, setRejectingTransfer] = useState<WarehouseTransfer | null>(null);
 
   const currentUser = erpStore.currentUser;
   const activeWh = erpStore.getActiveWarehouse();
@@ -35,17 +35,6 @@ export const Transfers: React.FC = () => {
     if (currentUser?.role === 'superadmin') return true;
     return trf.originWarehouseId === activeWh?.id || trf.destinationWarehouseId === activeWh?.id;
   });
-
-  const handleReceive = (trfId: string) => {
-    const trf = erpStore.transfers.find(t => t.id === trfId);
-    if (!trf) return;
-
-    const totalItems = trf.items.reduce((acc, i) => acc + i.quantity, 0);
-    if (confirm(`Confirma o recebimento e entrada no estoque das quantidades efetivas despachadas (${totalItems} unidades no total)?`)) {
-      erpStore.receiveTransfer(trfId);
-      alert('Transferência recebida com sucesso! Os produtos deram entrada exata no estoque do armazém de destino.');
-    }
-  };
 
   const handlePrintTransferDoc = (trf: WarehouseTransfer) => {
     const origin = erpStore.warehouses.find(w => w.id === trf.originWarehouseId);
@@ -71,16 +60,17 @@ export const Transfers: React.FC = () => {
       ],
       tables: [
         {
-          headers: ['SKU', 'Designação do Material', 'Qtd. Efetiva Enviada', 'Estado do Item'],
+          headers: ['SKU', 'Designação do Material', 'Qtd. Solicitada', 'Qtd. Enviada / Recebida', 'Estado'],
           rows: trf.items.map(i => [
             i.sku,
             i.productName,
-            `${i.quantity} UN`, // Aqui assume exatamente a quantidade real aprovada/despachada
+            `${i.quantity} UN`,
+            `${i.quantity} UN`,
             trf.status.toUpperCase(),
           ]),
         },
       ],
-      notes: `Observações da Operação: ${trf.notes || 'Transferência realizada sob rigoroso controlo de movimentação e balanço logístico regional.'}`,
+      notes: `Observações da Operação: ${trf.notes || 'Transferência realizada sob controlo e balanço logístico regional.'}`,
       signatures: ['Responsável Armazém Origem (Expedição)', 'Motorista / Transportador (Trânsito)', 'Responsável Armazém Destino (Recepção)'],
     });
   };
@@ -95,7 +85,7 @@ export const Transfers: React.FC = () => {
       'Motorista / Veículo',
       'Previsão Chegada',
       'Status',
-      'Qtd Total Enviada',
+      'Detalhes dos Itens',
     ];
 
     const rows = transfers.map(t => [
@@ -107,7 +97,7 @@ export const Transfers: React.FC = () => {
       `${t.transportDetails?.driverName || 'N/A'} (${t.transportDetails?.vehiclePlate || 'N/A'})`,
       t.transportDetails?.estimatedArrival || 'N/A',
       t.status.toUpperCase(),
-      t.items.reduce((s, i) => s + i.quantity, 0),
+      t.items.map(i => `${i.productName}: ${i.quantity}`).join('; '),
     ]);
 
     exportToExcel('Relatorio_Transferencias_Inter_Armazens', headers, rows);
@@ -123,7 +113,7 @@ export const Transfers: React.FC = () => {
             <span>Comunicação & Logística Inter-Armazéns</span>
           </h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            Protocolo de requisição multilinhas, validação de saldos de origem, despacho com motorista e controlo de trânsito.
+            Protocolo de requisição multilinhas, validação de saldos na origem, despacho e conferência discriminada item a item no destino.
           </p>
         </div>
 
@@ -157,7 +147,7 @@ export const Transfers: React.FC = () => {
                 <th className="py-2.5 px-3">Data</th>
                 <th className="py-2.5 px-3">Remetente (Origem)</th>
                 <th className="py-2.5 px-3">Destinatário</th>
-                <th className="py-2.5 px-3">Itens Despachados</th>
+                <th className="py-2.5 px-3">Discriminação dos Produtos</th>
                 <th className="py-2.5 px-3">Motorista & Transporte</th>
                 <th className="py-2.5 px-3 text-center">Status</th>
                 <th className="py-2.5 px-3 text-right">Ações Operacionais</th>
@@ -203,11 +193,16 @@ export const Transfers: React.FC = () => {
                         <span className="text-[10px] text-slate-500 block font-mono">{dest?.province}</span>
                       </td>
                       <td className="py-3 px-3">
-                        <div className="font-mono text-emerald-400 font-bold">
-                          {trf.items.length} {trf.items.length === 1 ? 'Produto' : 'Produtos'} ({trf.items.reduce((acc, item) => acc + item.quantity, 0)} UN)
-                        </div>
-                        <div className="text-[10px] text-slate-400 truncate max-w-xs">
-                          {trf.items.map(i => `${i.sku}: ${i.quantity} UN`).join(' | ')}
+                        {/* Exibição Discriminada de cada Item com seu Nome e Quantidade */}
+                        <div className="space-y-1">
+                          {trf.items.map((i, idx) => (
+                            <div key={idx} className="text-[11px] text-slate-200 font-mono flex items-center gap-1.5">
+                              <span className="text-sky-400 font-bold">•</span>
+                              <span className="font-semibold">{i.productName}:</span>
+                              <span className="text-amber-300 font-bold">{i.quantity} UN</span>
+                              <span className="text-slate-500 text-[10px]">({i.sku})</span>
+                            </div>
+                          ))}
                         </div>
                       </td>
                       <td className="py-3 px-3">
@@ -242,37 +237,59 @@ export const Transfers: React.FC = () => {
                       </td>
                       <td className="py-3 px-3 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1.5">
-                          {/* Botão de Análise e Aprovação pelo Armazém de Origem */}
+                          {/* Análise e Aprovação pelo Armazém de Origem */}
                           {(isOrigin || currentUser?.role === 'superadmin') && trf.status === 'solicitada' && (
-                            <button
-                              type="button"
-                              onClick={() => setApprovingTransfer(trf)}
-                              className="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded text-[11px] font-semibold flex items-center gap-1 shadow"
-                              title="Analisar Estoque, Ajustar Quantidades e Despachar Motorista"
-                            >
-                              <Send className="w-3 h-3" />
-                              <span>Analisar & Despachar</span>
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => setApprovingTransfer(trf)}
+                                className="px-2 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded text-[11px] font-semibold flex items-center gap-1 shadow"
+                                title="Analisar Estoque, Ajustar e Despachar Motorista"
+                              >
+                                <Send className="w-3 h-3" />
+                                <span>Analisar & Despachar</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setRejectingTransfer(trf)}
+                                className="px-2 py-1 bg-red-900 hover:bg-red-800 text-red-200 rounded text-[11px] font-semibold flex items-center gap-1"
+                                title="Reprovar/Rejeitar Pedido"
+                              >
+                                <XCircle className="w-3 h-3" />
+                                <span>Reprovar</span>
+                              </button>
+                            </>
                           )}
 
-                          {/* Confirmação de Recepção pelo Armazém de Destino */}
+                          {/* Conferência Física Item por Item no Armazém de Destino */}
                           {(isDestination || currentUser?.role === 'superadmin') && trf.status === 'em_transito' && (
-                            <button
-                              type="button"
-                              onClick={() => handleReceive(trf.id)}
-                              className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-600 text-white rounded text-[11px] font-semibold flex items-center gap-1 shadow"
-                              title="Confirmar Chegada e Ingerir no Estoque"
-                            >
-                              <Check className="w-3 h-3" />
-                              <span>Confirmar Recepção</span>
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => setReceivingTransfer(trf)}
+                                className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-600 text-white rounded text-[11px] font-semibold flex items-center gap-1 shadow"
+                                title="Conferir Entrada de Cada Item no Estoque"
+                              >
+                                <Check className="w-3 h-3" />
+                                <span>Conferir & Receber</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setRejectingTransfer(trf)}
+                                className="px-2 py-1 bg-red-900 hover:bg-red-800 text-red-200 rounded text-[11px] font-semibold flex items-center gap-1"
+                                title="Rejeitar Carga Recebida"
+                              >
+                                <XCircle className="w-3 h-3" />
+                                <span>Rejeitar</span>
+                              </button>
+                            </>
                           )}
 
                           <button
                             type="button"
                             onClick={() => handlePrintTransferDoc(trf)}
                             className="p-1.5 bg-slate-800 hover:bg-slate-700 text-sky-400 rounded transition-colors"
-                            title="Imprimir Guia de Transferência Oficial (PDF)"
+                            title="Imprimir Guia Oficial (PDF)"
                           >
                             <Printer className="w-3.5 h-3.5" />
                           </button>
@@ -287,7 +304,7 @@ export const Transfers: React.FC = () => {
         </div>
       </div>
 
-      {/* Modal 1: Solicitar Vários Produtos de uma Vez */}
+      {/* MODAL 1: Solicitar Vários Produtos */}
       {isNewTransferOpen && (
         <NewMultiTransferModal
           onClose={() => setIsNewTransferOpen(false)}
@@ -298,14 +315,38 @@ export const Transfers: React.FC = () => {
         />
       )}
 
-      {/* Modal 2: Armazém Remetente Confere Estoque e Associa Motorista/Envio */}
+      {/* MODAL 2: Armazém Remetente Analisa Estoque e Associa Motorista */}
       {approvingTransfer && (
         <ApproveTransferModal
           transfer={approvingTransfer}
           onClose={() => setApprovingTransfer(null)}
           onSuccess={() => {
             setApprovingTransfer(null);
-            alert('Transferência aprovada com as quantidades efetivas! Carga despachada e estoque baixado na origem.');
+            alert('Transferência aprovada! Carga despachada com os valores reais definidos.');
+          }}
+        />
+      )}
+
+      {/* MODAL 3: Conferência Discriminada de Entrada Item por Item na Recepção */}
+      {receivingTransfer && (
+        <ReceiveCheckModal
+          transfer={receivingTransfer}
+          onClose={() => setReceivingTransfer(null)}
+          onSuccess={() => {
+            setReceivingTransfer(null);
+            alert('Conferência concluída! Os produtos deram entrada discriminada com sucesso no estoque do armazém.');
+          }}
+        />
+      )}
+
+      {/* MODAL 4: Reprovar / Rejeitar Transferência (com justificativa) */}
+      {rejectingTransfer && (
+        <RejectTransferModal
+          transfer={rejectingTransfer}
+          onClose={() => setRejectingTransfer(null)}
+          onSuccess={() => {
+            setRejectingTransfer(null);
+            alert('Transferência reprovada/rejeitada e registada no histórico do ERP.');
           }}
         />
       )}
@@ -314,7 +355,7 @@ export const Transfers: React.FC = () => {
 };
 
 // ==========================================
-// MODAL 1: Solicitação Multilinhas Inter-Armazéns
+// MODAL 1: Solicitação Multilinhas
 // ==========================================
 interface TransferLine {
   sku: string;
@@ -329,10 +370,10 @@ const NewMultiTransferModal: React.FC<{ onClose: () => void; onSuccess: () => vo
   const otherWhs = erpStore.warehouses.filter(w => w.id !== activeWh?.id);
 
   const [originWhId, setOriginWhId] = useState(otherWhs[0]?.id || '');
-  const [notes, setNotes] = useState('Solicitação de contingência para reposição urgente de estoque.');
+  const [notes, setNotes] = useState('Solicitação de contingência para reposição de estoque.');
   const [lines, setLines] = useState<TransferLine[]>([
-    { sku: 'SKU-00001', quantity: 10 },
-    { sku: 'SKU-00002', quantity: 5 },
+    { sku: 'SKU-00001', quantity: 4 },
+    { sku: 'SKU-00002', quantity: 3 },
   ]);
 
   const handleAddLine = () => {
@@ -402,7 +443,7 @@ const NewMultiTransferModal: React.FC<{ onClose: () => void; onSuccess: () => vo
             <select
               value={originWhId}
               onChange={e => setOriginWhId(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white focus:border-sky-500 font-semibold"
+              className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white font-semibold"
             >
               {otherWhs.map(w => (
                 <option key={w.id} value={w.id}>
@@ -418,19 +459,19 @@ const NewMultiTransferModal: React.FC<{ onClose: () => void; onSuccess: () => vo
               type="text"
               value={notes}
               onChange={e => setNotes(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white focus:border-sky-500"
+              className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white"
             />
           </div>
 
           <div>
             <div className="flex items-center justify-between mb-2">
-              <span className="font-semibold text-slate-200">Lista de Produtos Requisitados:</span>
+              <span className="font-semibold text-slate-200">Produtos a Requisitar:</span>
               <button
                 type="button"
                 onClick={handleAddLine}
                 className="px-2.5 py-1 bg-sky-700 hover:bg-sky-600 text-white rounded text-[11px] flex items-center gap-1 font-semibold"
               >
-                <Plus className="w-3 h-3" /> Adicionar Produto
+                <Plus className="w-3 h-3" /> Adicionar Item
               </button>
             </div>
 
@@ -454,7 +495,7 @@ const NewMultiTransferModal: React.FC<{ onClose: () => void; onSuccess: () => vo
                   </div>
 
                   <div className="w-32">
-                    <label className="text-[10px] text-slate-400 uppercase block">Qtd. Solicitada *</label>
+                    <label className="text-[10px] text-slate-400 uppercase block">Qtd. Pretendida *</label>
                     <input
                       type="number"
                       min="1"
@@ -474,7 +515,6 @@ const NewMultiTransferModal: React.FC<{ onClose: () => void; onSuccess: () => vo
                       type="button"
                       onClick={() => handleRemoveLine(idx)}
                       className="mt-4 p-1.5 bg-red-950 hover:bg-red-900 text-red-300 rounded"
-                      title="Remover produto"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -496,7 +536,7 @@ const NewMultiTransferModal: React.FC<{ onClose: () => void; onSuccess: () => vo
               type="submit"
               className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded text-xs font-semibold shadow"
             >
-              Enviar Pedido Inter-Armazéns
+              Enviar Pedido
             </button>
           </div>
         </form>
@@ -506,7 +546,7 @@ const NewMultiTransferModal: React.FC<{ onClose: () => void; onSuccess: () => vo
 };
 
 // ==========================================
-// MODAL 2: Análise de Estoque na Origem & Expedição (Motorista / Veículo / Previsão)
+// MODAL 2: Análise de Estoque na Origem & Expedição
 // ==========================================
 const ApproveTransferModal: React.FC<{
   transfer: WarehouseTransfer;
@@ -543,13 +583,12 @@ const ApproveTransferModal: React.FC<{
       return;
     }
 
-    // Grava exatamente a quantidade aprovada/efetiva no store e atualiza os estoques
     erpStore.approveTransfer(transfer.id, {
       items: itemsToShip.map(i => ({
         productId: i.productId,
         sku: i.sku,
         productName: i.productName,
-        quantity: i.approvedQty, // Quantidade real enviada
+        quantity: i.approvedQty,
       })),
       transportDetails: {
         carrier,
@@ -569,7 +608,7 @@ const ApproveTransferModal: React.FC<{
         <div className="flex items-start justify-between border-b border-slate-800 pb-3">
           <div>
             <span className="text-xs text-amber-400 font-mono font-bold">{transfer.transferCode}</span>
-            <h3 className="font-bold text-base text-white">Análise e Despacho de Transferência</h3>
+            <h3 className="font-bold text-base text-white">Análise de Estoque e Despacho de Carga</h3>
             <p className="text-xs text-slate-400">Origem: {originWh?.name} ➔ Destino: {destWh?.name}</p>
           </div>
           <button type="button" onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
@@ -579,22 +618,22 @@ const ApproveTransferModal: React.FC<{
           <div>
             <label className="block text-slate-200 font-bold mb-2 flex items-center gap-1.5">
               <Boxes className="w-4 h-4 text-sky-400" />
-              <span>1. Definir Quantidades Reais a Enviar (Conferência de Estoque):</span>
+              <span>1. Definição de Quantidade Real a Enviar Por Item:</span>
             </label>
 
             <div className="space-y-2 bg-slate-950 p-3 rounded border border-slate-800">
               {itemsToShip.map((item, idx) => (
                 <div key={idx} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-2 last:border-0 last:pb-0">
                   <div>
-                    <div className="font-mono font-bold text-white">{item.sku} - {item.productName}</div>
+                    <div className="font-mono font-bold text-white">{item.productName} ({item.sku})</div>
                     <div className="text-[10px] text-slate-400">
-                      Solicitado pelo destino: <strong className="text-amber-400">{item.quantity} UN</strong> |
-                      Estoque no Armazém Origem: <strong className={item.availableStock >= item.quantity ? 'text-emerald-400' : 'text-red-400'}>{item.availableStock} UN</strong>
+                      Pedido do Destino: <strong className="text-amber-400">{item.quantity} UN</strong> |
+                      Estoque Físico na Origem: <strong className={item.availableStock >= item.quantity ? 'text-emerald-400' : 'text-red-400'}>{item.availableStock} UN</strong>
                     </div>
                   </div>
 
                   <div className="w-full sm:w-36">
-                    <label className="text-[10px] text-slate-400 uppercase block font-semibold text-emerald-400">Qtd. Efetiva Enviada</label>
+                    <label className="text-[10px] text-emerald-400 uppercase block font-semibold">Qtd. Efetiva Aprovada</label>
                     <input
                       type="number"
                       min="0"
@@ -617,7 +656,7 @@ const ApproveTransferModal: React.FC<{
           <div className="space-y-3">
             <label className="block text-slate-200 font-bold flex items-center gap-1.5">
               <Truck className="w-4 h-4 text-emerald-400" />
-              <span>2. Informações do Condutor e Previsão de Transporte:</span>
+              <span>2. Dados do Transporte e Motorista Responsável:</span>
             </label>
 
             <div className="grid grid-cols-2 gap-3">
@@ -646,7 +685,7 @@ const ApproveTransferModal: React.FC<{
 
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <label className="block text-slate-300 font-semibold mb-1">Contacto Telefónico *</label>
+                <label className="block text-slate-300 font-semibold mb-1">Telefone *</label>
                 <input
                   type="text"
                   required
@@ -674,7 +713,6 @@ const ApproveTransferModal: React.FC<{
                   required
                   value={estimatedArrival}
                   onChange={e => setEstimatedArrival(e.target.value)}
-                  placeholder="Ex: 24/10/2026 às 10:00"
                   className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-emerald-400 font-mono font-semibold"
                 />
               </div>
@@ -693,7 +731,170 @@ const ApproveTransferModal: React.FC<{
               type="submit"
               className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-semibold shadow"
             >
-              Aprovar, Despachar Qtds. Reais & Iniciar Trânsito
+              Aprovar, Despachar & Iniciar Trânsito
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+// ==========================================
+// MODAL 3: Conferência Discriminada na Recepção (Item por Item)
+// ==========================================
+const ReceiveCheckModal: React.FC<{
+  transfer: WarehouseTransfer;
+  onClose: () => void;
+  onSuccess: () => void;
+}> = ({ transfer, onClose, onSuccess }) => {
+  const [receivedItems, setReceivedItems] = useState(
+    transfer.items.map(item => ({
+      ...item,
+      receivedQuantity: item.quantity, // Por padrão sugere a quantidade enviada pelo motorista
+    }))
+  );
+
+  const handleConfirmReceipt = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // Atualiza o recebimento no store com as quantidades confirmadas
+    erpStore.receiveTransfer(transfer.id, {
+      receivedItems: receivedItems.map(i => ({
+        productId: i.productId,
+        sku: i.sku,
+        productName: i.productName,
+        quantity: i.receivedQuantity,
+      })),
+    });
+
+    onSuccess();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-slate-900 border border-slate-700 rounded-lg max-w-2xl w-full p-6 text-slate-100 shadow-2xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-start justify-between border-b border-slate-800 pb-3">
+          <div>
+            <span className="text-xs text-emerald-400 font-mono font-bold">{transfer.transferCode}</span>
+            <h3 className="font-bold text-base text-white">Conferência Física de Entrada Discriminada</h3>
+            <p className="text-xs text-slate-400">Verifique a quantidade real entregue pelo motorista para cada produto individualmente.</p>
+          </div>
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
+        </div>
+
+        <form onSubmit={handleConfirmReceipt} className="py-4 space-y-4 text-xs">
+          <div className="bg-slate-950 p-3 rounded border border-slate-800 space-y-3">
+            <div className="text-[11px] font-semibold text-slate-300">Discriminação das Mercadorias Recebidas:</div>
+
+            {receivedItems.map((item, idx) => (
+              <div key={idx} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-2 bg-slate-900 rounded border border-slate-800">
+                <div className="flex-1">
+                  <div className="font-semibold text-white text-xs">{item.productName}</div>
+                  <div className="text-[10px] text-slate-400 font-mono">
+                    SKU: {item.sku} | Quantidade Despachada na Guia: <strong className="text-amber-400">{item.quantity} UN</strong>
+                  </div>
+                </div>
+
+                <div className="w-full sm:w-40">
+                  <label className="text-[10px] text-emerald-400 uppercase block font-semibold">Qtd. Real Recebida</label>
+                  <input
+                    type="number"
+                    min="0"
+                    required
+                    value={item.receivedQuantity}
+                    onChange={e => {
+                      const val = parseInt(e.target.value, 10) || 0;
+                      const newItems = [...receivedItems];
+                      newItems[idx].receivedQuantity = val;
+                      setReceivedItems(newItems);
+                    }}
+                    className="w-full bg-slate-950 border border-slate-700 rounded p-1.5 text-emerald-400 font-mono font-bold focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded text-xs font-semibold"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-semibold shadow"
+            >
+              Confirmar Entrada Exata no Estoque
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+// ==========================================
+// MODAL 4: Reprovar / Rejeitar Transferência
+// ==========================================
+const RejectTransferModal: React.FC<{
+  transfer: WarehouseTransfer;
+  onClose: () => void;
+  onSuccess: () => void;
+}> = ({ transfer, onClose, onSuccess }) => {
+  const [reason, setReason] = useState('');
+
+  const handleReject = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reason.trim()) {
+      alert('Por favor, informe o motivo da reprovação/rejeição.');
+      return;
+    }
+
+    erpStore.rejectTransfer(transfer.id, reason.trim());
+    onSuccess();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-slate-900 border border-slate-700 rounded-lg max-w-md w-full p-6 text-slate-100 shadow-2xl">
+        <div className="flex items-start justify-between border-b border-slate-800 pb-3">
+          <div>
+            <span className="text-xs text-red-400 font-mono font-bold">{transfer.transferCode}</span>
+            <h3 className="font-bold text-base text-white">Reprovar / Rejeitar Transferência</h3>
+          </div>
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
+        </div>
+
+        <form onSubmit={handleReject} className="py-4 space-y-3 text-xs">
+          <div>
+            <label className="block text-slate-300 font-semibold mb-1">Motivo / Justificativa da Reprovação *</label>
+            <textarea
+              rows={3}
+              required
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+              placeholder="Ex: Falta de estoque físico na origem / Material danificado durante o transporte..."
+              className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white focus:border-red-500"
+            />
+          </div>
+
+          <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded text-xs font-semibold"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-red-700 hover:bg-red-600 text-white rounded text-xs font-semibold shadow"
+            >
+              Confirmar Reprovação
             </button>
           </div>
         </form>
