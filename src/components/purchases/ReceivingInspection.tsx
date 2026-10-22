@@ -141,28 +141,113 @@ export const ReceivingInspection: React.FC = () => {
 
     const lastShipment = orderShipments[orderShipments.length - 1];
 
-    const result = erpStore.completeReceivingInspection({
-      orderId: selectedOrder.id,
-      shipmentId: lastShipment?.id,
-      itemsChecked: itemsCheckedFormatted,
-      notes: inspectionNotes,
+// --- Receiving & Stock Ingestion ---
+  public completeReceivingInspection(params: {
+    orderId: string;
+    shipmentId?: string;
+    itemsChecked: {
+      productId: string;
+      sku: string;
+      productName: string;
+      quantityExpected: number;
+      quantityReceived: number; // Quantidade recebida NESTA entrega
+      condition: 'conforme' | 'danificado' | 'incompleto' | 'divergente';
+      batchNumber?: string;
+      notes?: string;
+    }[];
+    notes?: string;
+  }): { success: boolean; rncCreated?: RNCReport; orderUpdated?: PurchaseOrder } {
+    const po = this.purchaseOrders.find(p => p.id === params.orderId);
+    if (!po) return { success: false };
+
+    // 1. Atualiza as quantidades acumuladas já recebidas no Pedido de Compra
+    params.itemsChecked.forEach(checkedItem => {
+      const poItem = po.items.find(i => i.productId === checkedItem.productId);
+      if (poItem) {
+        // Soma a quantidade desta entrega com o que já tinha sido recebido anteriormente
+        const currentTotalReceived = poItem.quantityReceived || 0;
+        poItem.quantityReceived = currentTotalReceived + checkedItem.quantityReceived;
+      }
     });
 
-    if (result.success) {
-      if (result.rncCreated) {
-        alert(
-          `Inspeção Concluída! Foram detetadas divergências/não conformidades. O relatório oficial ${result.rncCreated.rncNumber} foi gerado automaticamente e enviado para o Fornecedor.`
-        );
-      } else {
-        alert(
-          'Inspeção 100% Conforme! As quantidades conferidas deram entrada automática no saldo físico do armazém.'
-        );
-      }
-      setSelectedOrderId('');
-      setInspectionNotes('');
-      setAttachedDocName('');
-      setAttachedDocData('');
+    // 2. Verifica se houve itens não conformes ou avariados
+    const nonConformingItems = params.itemsChecked.filter(
+      item => item.condition !== 'conforme' || item.quantityReceived < item.quantityExpected
+    );
+
+    let rncReport: RNCReport | undefined;
+
+    if (nonConformingItems.length > 0) {
+      const rncNumber = `RNC-${new Date().getFullYear()}-${String(this.rncs.length + 1).padStart(4, '0')}`;
+      rncReport = {
+        id: `rnc-${Date.now()}`,
+        rncNumber,
+        warehouseId: po.warehouseId,
+        orderId: po.id,
+        shipmentId: params.shipmentId,
+        supplierId: po.supplierId,
+        supplierName: po.supplierName,
+        openedByUserId: this.currentUser?.id || 'sys',
+        openedByUserName: this.currentUser?.name || 'Responsável Armazém',
+        openedAt: new Date().toISOString(),
+        status: 'aberta',
+        severity: 'alta',
+        issueType: 'falta_quantidade',
+        description: `Discrepâncias detectadas na inspeção de recebimento do pedido ${po.orderNumber}.`,
+        affectedItems: nonConformingItems.map(i => ({
+          sku: i.sku,
+          productName: i.productName,
+          quantityAffected: Math.max(1, i.quantityExpected - i.quantityReceived),
+          defectDetail: `Condição: ${i.condition}. Recebido nesta entrega: ${i.quantityReceived} de ${i.quantityExpected} esperados. ${i.notes || ''}`,
+        })),
+      };
+      this.rncs.unshift(rncReport);
     }
+
+    // 3. Dá entrada automática no stock físico das quantidades recebidas nesta entrega
+    params.itemsChecked.forEach(item => {
+      if (item.quantityReceived > 0) {
+        this.addStockMovement({
+          warehouseId: po.warehouseId,
+          productId: item.productId,
+          productSku: item.sku,
+          productName: item.productName,
+          type: 'entrada_compra',
+          quantity: item.quantityReceived,
+          unitPriceAOA: po.items.find(pi => pi.productId === item.productId)?.unitPriceAOA || 0,
+          totalPriceAOA:
+            item.quantityReceived * (po.items.find(pi => pi.productId === item.productId)?.unitPriceAOA || 0),
+          originReference: `Pedido ${po.orderNumber} (Fornecedor: ${po.supplierName})`,
+          requesterOrRecipient: po.supplierName,
+          executedByUserId: this.currentUser?.id || 'sys',
+          executedByUserName: this.currentUser?.name || 'Responsável Armazém',
+          notes: item.batchNumber ? `Lote recebido: ${item.batchNumber}` : 'Recebimento de compra',
+        });
+      }
+    });
+
+    // 4. Determina se o pedido foi TOTALMENTE concluído ou se continua PARCIAL
+    const isFullyCompleted = po.items.every(i => (i.quantityReceived || 0) >= i.quantityRequested);
+
+    if (isFullyCompleted) {
+      po.status = 'comprado'; // Marca como 100% concluído!
+    } else {
+      po.status = 'recebido_parcial'; // Permanece parcial para receber a diferença restante
+    }
+    po.updatedAt = new Date().toISOString();
+
+    // 5. Atualiza o estado do envio se aplicável
+    if (params.shipmentId) {
+      const ship = this.shipments.find(s => s.id === params.shipmentId);
+      if (ship) {
+        ship.status = 'entregue';
+        ship.deliveredAt = new Date().toISOString();
+      }
+    }
+
+    this.saveState();
+    return { success: true, rncCreated: rncReport, orderUpdated: po };
+  }
   };
 
   // Print Labels
