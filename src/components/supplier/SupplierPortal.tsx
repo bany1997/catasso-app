@@ -50,11 +50,13 @@ export const SupplierPortal: React.FC = () => {
   const isSupplier = currentUser?.role === 'fornecedor';
 
   // Approved purchase orders assigned to this supplier
+// Apenas mostrar ordens atribuídas ao fornecedor E que já estejam aprovadas/ativas
   const approvedOrders = erpStore.purchaseOrders.filter(po => {
+    const isApprovedOrActive = ['aprovado', 'em_preparacao', 'em_transito', 'recebido_parcial'].includes(po.status);
     if (isSupplier) {
-      return po.supplierId === currentUser.id || po.supplierEmail === currentUser.email;
+      return (po.supplierId === currentUser.id || po.supplierEmail === currentUser.email) && isApprovedOrActive;
     }
-    return po.status === 'aprovado' || po.status === 'em_preparacao' || po.status === 'em_transito' || po.status === 'recebido_parcial';
+    return isApprovedOrActive;
   });
 
   // Filtered shipments for tracking
