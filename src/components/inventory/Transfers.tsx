@@ -37,9 +37,13 @@ export const Transfers: React.FC = () => {
   });
 
   const handleReceive = (trfId: string) => {
-    if (confirm('Confirma o recebimento e conferência física dos produtos no estoque?')) {
+    const trf = erpStore.transfers.find(t => t.id === trfId);
+    if (!trf) return;
+
+    const totalItems = trf.items.reduce((acc, i) => acc + i.quantity, 0);
+    if (confirm(`Confirma o recebimento e entrada no estoque das quantidades efetivas despachadas (${totalItems} unidades no total)?`)) {
       erpStore.receiveTransfer(trfId);
-      alert('Transferência recebida com sucesso! Os produtos deram entrada no estoque do armazém de destino.');
+      alert('Transferência recebida com sucesso! Os produtos deram entrada exata no estoque do armazém de destino.');
     }
   };
 
@@ -63,16 +67,15 @@ export const Transfers: React.FC = () => {
         { label: 'Motorista / Condutor', value: `${trf.transportDetails?.driverName || 'N/A'} (${trf.transportDetails?.driverPhone || 'S/Contacto'})` },
         { label: 'Matrícula do Veículo', value: trf.transportDetails?.vehiclePlate || 'N/A' },
         { label: 'Previsão de Chegada', value: trf.transportDetails?.estimatedArrival || 'A definir' },
-        { label: 'Status do Protocolo', value: trf.status.toUpperCase() },
+        { label: 'Status da Guia', value: trf.status.toUpperCase() },
       ],
       tables: [
         {
-          headers: ['SKU', 'Designação do Material', 'Qtd. Solicitada', 'Qtd. Enviada / Despachada', 'Estado'],
+          headers: ['SKU', 'Designação do Material', 'Qtd. Efetiva Enviada', 'Estado do Item'],
           rows: trf.items.map(i => [
             i.sku,
             i.productName,
-            `${i.quantity} UN`,
-            `${i.quantity} UN`,
+            `${i.quantity} UN`, // Aqui assume exatamente a quantidade real aprovada/despachada
             trf.status.toUpperCase(),
           ]),
         },
@@ -92,7 +95,7 @@ export const Transfers: React.FC = () => {
       'Motorista / Veículo',
       'Previsão Chegada',
       'Status',
-      'Qtd Total Itens',
+      'Qtd Total Enviada',
     ];
 
     const rows = transfers.map(t => [
@@ -154,7 +157,7 @@ export const Transfers: React.FC = () => {
                 <th className="py-2.5 px-3">Data</th>
                 <th className="py-2.5 px-3">Remetente (Origem)</th>
                 <th className="py-2.5 px-3">Destinatário</th>
-                <th className="py-2.5 px-3">Itens Requisitados</th>
+                <th className="py-2.5 px-3">Itens Despachados</th>
                 <th className="py-2.5 px-3">Motorista & Transporte</th>
                 <th className="py-2.5 px-3 text-center">Status</th>
                 <th className="py-2.5 px-3 text-right">Ações Operacionais</th>
@@ -200,7 +203,7 @@ export const Transfers: React.FC = () => {
                         <span className="text-[10px] text-slate-500 block font-mono">{dest?.province}</span>
                       </td>
                       <td className="py-3 px-3">
-                        <div className="font-mono text-slate-300 font-bold">
+                        <div className="font-mono text-emerald-400 font-bold">
                           {trf.items.length} {trf.items.length === 1 ? 'Produto' : 'Produtos'} ({trf.items.reduce((acc, item) => acc + item.quantity, 0)} UN)
                         </div>
                         <div className="text-[10px] text-slate-400 truncate max-w-xs">
@@ -302,7 +305,7 @@ export const Transfers: React.FC = () => {
           onClose={() => setApprovingTransfer(null)}
           onSuccess={() => {
             setApprovingTransfer(null);
-            alert('Transferência aprovada! Carga despachada e estoque baixado na origem.');
+            alert('Transferência aprovada com as quantidades efetivas! Carga despachada e estoque baixado na origem.');
           }}
         />
       )}
@@ -351,7 +354,6 @@ const NewMultiTransferModal: React.FC<{ onClose: () => void; onSuccess: () => vo
       return;
     }
 
-    // Validar SKUs inseridos
     const validItems = [];
     for (const line of lines) {
       const prod = catalogService.getProductBySku(line.sku.trim().toUpperCase());
@@ -514,7 +516,6 @@ const ApproveTransferModal: React.FC<{
   const originWh = erpStore.warehouses.find(w => w.id === transfer.originWarehouseId);
   const destWh = erpStore.warehouses.find(w => w.id === transfer.destinationWarehouseId);
 
-  // Estado para conferir e editar as quantidades que o armazém remetente PODE efetivamente enviar
   const [itemsToShip, setItemsToShip] = useState(
     transfer.items.map(item => {
       const prod = catalogService.getProductBySku(item.sku);
@@ -522,12 +523,11 @@ const ApproveTransferModal: React.FC<{
       return {
         ...item,
         availableStock,
-        approvedQty: Math.min(item.quantity, availableStock), // Por padrão sugere o que for possível
+        approvedQty: Math.min(item.quantity, availableStock),
       };
     })
   );
 
-  // Dados do transporte e motorista
   const [carrier, setCarrier] = useState('Frota Própria CATASSO ERP');
   const [driverName, setDriverName] = useState('Mateus Kitumba');
   const [driverPhone, setDriverPhone] = useState('+244 923 888 111');
@@ -537,20 +537,19 @@ const ApproveTransferModal: React.FC<{
   const handleConfirmDespatch = (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Validar se pelo menos 1 item será enviado
     const totalApproved = itemsToShip.reduce((acc, i) => acc + i.approvedQty, 0);
     if (totalApproved <= 0) {
       alert('A quantidade a enviar não pode ser zero para todos os produtos.');
       return;
     }
 
-    // Atualizar no erpStore
+    // Grava exatamente a quantidade aprovada/efetiva no store e atualiza os estoques
     erpStore.approveTransfer(transfer.id, {
       items: itemsToShip.map(i => ({
         productId: i.productId,
         sku: i.sku,
         productName: i.productName,
-        quantity: i.approvedQty,
+        quantity: i.approvedQty, // Quantidade real enviada
       })),
       transportDetails: {
         carrier,
@@ -577,11 +576,10 @@ const ApproveTransferModal: React.FC<{
         </div>
 
         <form onSubmit={handleConfirmDespatch} className="py-4 space-y-4 text-xs">
-          {/* Conferência de Estoque na Origem */}
           <div>
             <label className="block text-slate-200 font-bold mb-2 flex items-center gap-1.5">
               <Boxes className="w-4 h-4 text-sky-400" />
-              <span>1. Conferência de Estoque Disponível & Quantidades a Enviar:</span>
+              <span>1. Definir Quantidades Reais a Enviar (Conferência de Estoque):</span>
             </label>
 
             <div className="space-y-2 bg-slate-950 p-3 rounded border border-slate-800">
@@ -596,7 +594,7 @@ const ApproveTransferModal: React.FC<{
                   </div>
 
                   <div className="w-full sm:w-36">
-                    <label className="text-[10px] text-slate-400 uppercase block font-semibold">Qtd. Aprovada / Enviada</label>
+                    <label className="text-[10px] text-slate-400 uppercase block font-semibold text-emerald-400">Qtd. Efetiva Enviada</label>
                     <input
                       type="number"
                       min="0"
@@ -608,7 +606,7 @@ const ApproveTransferModal: React.FC<{
                         newItems[idx].approvedQty = Math.min(val, item.availableStock);
                         setItemsToShip(newItems);
                       }}
-                      className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-white font-mono font-bold focus:border-amber-500"
+                      className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-emerald-400 font-mono font-bold focus:border-amber-500"
                     />
                   </div>
                 </div>
@@ -616,7 +614,6 @@ const ApproveTransferModal: React.FC<{
             </div>
           </div>
 
-          {/* Informações do Envio e Motorista */}
           <div className="space-y-3">
             <label className="block text-slate-200 font-bold flex items-center gap-1.5">
               <Truck className="w-4 h-4 text-emerald-400" />
@@ -696,7 +693,7 @@ const ApproveTransferModal: React.FC<{
               type="submit"
               className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-semibold shadow"
             >
-              Aprovar, Baixar Estoque & Iniciar Trânsito
+              Aprovar, Despachar Qtds. Reais & Iniciar Trânsito
             </button>
           </div>
         </form>
