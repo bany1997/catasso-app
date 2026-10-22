@@ -13,6 +13,7 @@ import {
   EyeOff,
   CheckCircle,
   Plus,
+  Search,
 } from 'lucide-react';
 
 export const UserManagement: React.FC = () => {
@@ -20,6 +21,7 @@ export const UserManagement: React.FC = () => {
   const [isAddWarehouseOpen, setIsAddWarehouseOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
+  const [searchQuery, setSearchQuery] = useState(''); // Estado para a barra de pesquisa
 
   // New User Form State
   const [username, setUsername] = useState('');
@@ -44,28 +46,38 @@ export const UserManagement: React.FC = () => {
   const isGestorGeral = currentUser?.role === 'gestor_geral';
   const isResponsavel = currentUser?.role === 'responsavel_armazem';
 
-  // Role visibility rules for users list
+  // Role visibility rules for users list + Search Query filtering
   const visibleUsers = erpStore.users.filter(u => {
-    if (isSuperadmin) return true;
-    if (isGestorGeral) {
-      // Gestor Geral sees their warehouse's users + fleet managers + suppliers
-      return u.warehouseId === currentUser?.warehouseId || u.warehouseId === 'all';
+    // Escopo de visibilidade por cargo
+    let inScope = false;
+    if (isSuperadmin) {
+      inScope = true;
+    } else if (isGestorGeral || isResponsavel) {
+      inScope = u.warehouseId === currentUser?.warehouseId || u.warehouseId === 'all';
     }
-    if (isResponsavel) {
-      // Responsável de armazém sees users in their warehouse
-      return u.warehouseId === currentUser?.warehouseId || u.warehouseId === 'all';
+
+    if (!inScope) return false;
+
+    // Filtro da Barra de Pesquisa
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const matchName = u.name.toLowerCase().includes(q);
+      const matchUsername = u.username.toLowerCase().includes(q);
+      const matchEmail = (u.email || '').toLowerCase().includes(q);
+      const matchRole = u.role.toLowerCase().includes(q);
+      if (!matchName && !matchUsername && !matchEmail && !matchRole) return false;
     }
-    return false;
+
+    return true;
   });
 
-  // Password visibility rule: "Um responsável de armazém não pode ver a senha de um gestor geral"
+  // Password visibility rule
   const canSeePassword = (targetUser: User): boolean => {
     if (!currentUser) return false;
     if (currentUser.id === targetUser.id) return true;
     if (isSuperadmin) return true;
     if (isGestorGeral && targetUser.role !== 'superadmin') return true;
     if (isResponsavel) {
-      // Responsável cannot see gestor_geral or superadmin password
       if (targetUser.role === 'gestor_geral' || targetUser.role === 'superadmin') {
         return false;
       }
@@ -102,12 +114,22 @@ export const UserManagement: React.FC = () => {
     e.preventDefault();
     if (!editingUser) return;
 
+    // Regra de segurança: Se o utilizador alvo é superadmin, apenas outro superadmin pode editar
+    if (editingUser.role === 'superadmin' && !isSuperadmin) {
+      alert('Acesso negado: Apenas um Superadministrador pode editar contas de Superadministrador.');
+      return;
+    }
+
     erpStore.updateUser(editingUser.id, editingUser);
     setEditingUser(null);
-    alert('Dados do utilizador atualizados!');
+    alert('Dados do utilizador atualizados com sucesso!');
   };
 
-  const handleDeleteUser = (userId: string) => {
+  const handleDeleteUser = (userId: string, targetRole: string) => {
+    if (targetRole === 'superadmin' && !isSuperadmin) {
+      alert('Acesso negado: Contas de Superadministrador não podem ser eliminadas por utilizadores comuns.');
+      return;
+    }
     if (confirm('Tem certeza de que deseja excluir este utilizador do sistema?')) {
       erpStore.deleteUser(userId);
     }
@@ -173,15 +195,24 @@ export const UserManagement: React.FC = () => {
         </div>
       </div>
 
-      {/* Users Table */}
+      {/* Users Table & Search Bar */}
       <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-        <div className="p-4 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
+        <div className="p-4 bg-slate-950 border-b border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
           <h2 className="text-sm font-bold text-white uppercase tracking-wider">
             Contas de Acesso Cadastradas ({visibleUsers.length})
           </h2>
-          <span className="text-xs text-slate-400">
-            Senha padrão de teste para todas as contas: <strong className="text-sky-400 font-mono">1234</strong>
-          </span>
+
+          {/* Barra de Pesquisa de Utilizadores */}
+          <div className="relative w-full sm:w-72">
+            <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Pesquisar por nome, login, email..."
+              className="w-full bg-slate-900 border border-slate-700 rounded pl-9 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+            />
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -198,113 +229,130 @@ export const UserManagement: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
-              {visibleUsers.map(u => {
-                const wh = erpStore.warehouses.find(w => w.id === u.warehouseId);
-                const isPasswordVisible = showPasswords[u.id];
-                const canSee = canSeePassword(u);
+              {visibleUsers.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-8 text-center text-slate-500">
+                    Nenhum utilizador encontrado com os termos pesquisados.
+                  </td>
+                </tr>
+              ) : (
+                visibleUsers.map(u => {
+                  const wh = erpStore.warehouses.find(w => w.id === u.warehouseId);
+                  const isPasswordVisible = showPasswords[u.id];
+                  const canSee = canSeePassword(u);
 
-                const roleBadges: Record<string, string> = {
-                  superadmin: 'bg-purple-950 text-purple-300 border-purple-800',
-                  gestor_geral: 'bg-indigo-950 text-indigo-300 border-indigo-800',
-                  responsavel_armazem: 'bg-sky-950 text-sky-300 border-sky-800',
-                  gestor_frotas: 'bg-amber-950 text-amber-300 border-amber-800',
-                  atendente: 'bg-blue-950 text-blue-300 border-blue-800',
-                  cliente: 'bg-emerald-950 text-emerald-300 border-emerald-800',
-                  fornecedor: 'bg-orange-950 text-orange-300 border-orange-800',
-                };
+                  // Verificar se o utilizador atual pode editar este registo (Superadmin apenas para contas superadmin)
+                  const canEditThisUser = u.role !== 'superadmin' || isSuperadmin;
 
-                return (
-                  <tr key={u.id} className="hover:bg-slate-800/40">
-                    <td className="py-3 px-3 font-semibold text-slate-200">
-                      {u.name}
-                      {u.supplierCompanyName && (
-                        <span className="text-[10px] text-slate-400 block font-normal">
-                          {u.supplierCompanyName}
-                        </span>
-                      )}
-                      {u.clientDepartment && (
-                        <span className="text-[10px] text-slate-400 block font-normal">
-                          {u.clientDepartment}
-                        </span>
-                      )}
-                    </td>
+                  const roleBadges: Record<string, string> = {
+                    superadmin: 'bg-purple-950 text-purple-300 border-purple-800',
+                    gestor_geral: 'bg-indigo-950 text-indigo-300 border-indigo-800',
+                    responsavel_armazem: 'bg-sky-950 text-sky-300 border-sky-800',
+                    gestor_frotas: 'bg-amber-950 text-amber-300 border-amber-800',
+                    atendente: 'bg-blue-950 text-blue-300 border-blue-800',
+                    cliente: 'bg-emerald-950 text-emerald-300 border-emerald-800',
+                    fornecedor: 'bg-orange-950 text-orange-300 border-orange-800',
+                  };
 
-                    <td className="py-3 px-3 font-mono text-sky-400 font-bold">
-                      {u.username}
-                    </td>
-
-                    <td className="py-3 px-3 whitespace-nowrap">
-                      <span
-                        className={`text-[10px] px-2 py-0.5 rounded font-mono uppercase border ${
-                          roleBadges[u.role] || 'bg-slate-800 text-slate-300'
-                        }`}
-                      >
-                        {u.role.replace('_', ' ')}
-                      </span>
-                    </td>
-
-                    <td className="py-3 px-3 text-slate-300 whitespace-nowrap">
-                      {u.warehouseId === 'all' ? (
-                        <span className="text-slate-400 font-mono">Todos os Armazéns</span>
-                      ) : (
-                        <span>{wh?.name} ({wh?.province})</span>
-                      )}
-                    </td>
-
-                    <td className="py-3 px-3 text-slate-400 font-mono">
-                      {u.email}
-                    </td>
-
-                    <td className="py-3 px-3 whitespace-nowrap">
-                      {canSee ? (
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-mono text-slate-300">
-                            {isPasswordVisible ? u.password : '••••••••'}
+                  return (
+                    <tr key={u.id} className="hover:bg-slate-800/40">
+                      <td className="py-3 px-3 font-semibold text-slate-200">
+                        {u.name}
+                        {u.supplierCompanyName && (
+                          <span className="text-[10px] text-slate-400 block font-normal">
+                            {u.supplierCompanyName}
                           </span>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setShowPasswords({ ...showPasswords, [u.id]: !isPasswordVisible })
-                            }
-                            className="text-slate-500 hover:text-slate-300"
-                          >
-                            {isPasswordVisible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="text-[10px] text-slate-500 font-mono flex items-center gap-1">
-                          <Lock className="w-3 h-3 text-slate-600" />
-                          <span>Confidencial</span>
-                        </span>
-                      )}
-                    </td>
-
-                    <td className="py-3 px-3 text-right whitespace-nowrap">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => setEditingUser({ ...u })}
-                          className="p-1 text-slate-400 hover:text-emerald-400 hover:bg-slate-800 rounded"
-                          title="Editar Utilizador"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-
-                        {isSuperadmin && u.username !== 'admin' && (
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteUser(u.id)}
-                            className="p-1 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded"
-                            title="Eliminar Utilizador"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+                        {u.clientDepartment && (
+                          <span className="text-[10px] text-slate-400 block font-normal">
+                            {u.clientDepartment}
+                          </span>
+                        )}
+                      </td>
+
+                      <td className="py-3 px-3 font-mono text-sky-400 font-bold">
+                        {u.username}
+                      </td>
+
+                      <td className="py-3 px-3 whitespace-nowrap">
+                        <span
+                          className={`text-[10px] px-2 py-0.5 rounded font-mono uppercase border ${
+                            roleBadges[u.role] || 'bg-slate-800 text-slate-300'
+                          }`}
+                        >
+                          {u.role.replace('_', ' ')}
+                        </span>
+                      </td>
+
+                      <td className="py-3 px-3 text-slate-300 whitespace-nowrap">
+                        {u.warehouseId === 'all' ? (
+                          <span className="text-slate-400 font-mono">Todos os Armazéns</span>
+                        ) : (
+                          <span>{wh?.name} ({wh?.province})</span>
+                        )}
+                      </td>
+
+                      <td className="py-3 px-3 text-slate-400 font-mono">
+                        {u.email}
+                      </td>
+
+                      <td className="py-3 px-3 whitespace-nowrap">
+                        {canSee ? (
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono text-slate-300">
+                              {isPasswordVisible ? u.password : '••••••••'}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setShowPasswords({ ...showPasswords, [u.id]: !isPasswordVisible })
+                              }
+                              className="text-slate-500 hover:text-slate-300"
+                            >
+                              {isPasswordVisible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-slate-500 font-mono flex items-center gap-1">
+                            <Lock className="w-3 h-3 text-slate-600" />
+                            <span>Confidencial</span>
+                          </span>
+                        )}
+                      </td>
+
+                      <td className="py-3 px-3 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {canEditThisUser ? (
+                            <button
+                              type="button"
+                              onClick={() => setEditingUser({ ...u })}
+                              className="p-1 text-slate-400 hover:text-emerald-400 hover:bg-slate-800 rounded"
+                              title="Editar Utilizador"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                          ) : (
+                            <span title="Apenas Superadministradores podem editar contas superadmin">
+                              <Lock className="w-3.5 h-3.5 text-slate-600 inline cursor-not-allowed" />
+                            </span>
+                          )}
+
+                          {isSuperadmin && u.username !== 'admin' && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteUser(u.id, u.role)}
+                              className="p-1 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded"
+                              title="Eliminar Utilizador"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
@@ -504,12 +552,12 @@ export const UserManagement: React.FC = () => {
                 <div>
                   <label className="block text-slate-300 font-semibold mb-1">Nível de Acesso</label>
                   <select
-                    disabled={!isSuperadmin && editingUser.username === 'admin'}
+                    disabled={!isSuperadmin && (editingUser.role === 'superadmin' || editingUser.username === 'admin')}
                     value={editingUser.role}
                     onChange={e => setEditingUser({ ...editingUser, role: e.target.value as any })}
-                    className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white"
+                    className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white disabled:opacity-50"
                   >
-                    <option value="superadmin">Superadministrador</option>
+                    {isSuperadmin && <option value="superadmin">Superadministrador</option>}
                     <option value="gestor_geral">Gestor Geral</option>
                     <option value="responsavel_armazem">Responsável de Armazém</option>
                     <option value="gestor_frotas">Gestor de Frotas</option>
