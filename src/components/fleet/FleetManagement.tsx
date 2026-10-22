@@ -20,11 +20,14 @@ import {
   Building2,
   CheckCircle2,
   Clock,
+  Search,
 } from 'lucide-react';
 
 export const FleetManagement: React.FC = () => {
   const [selectedWarehouseFilter, setSelectedWarehouseFilter] = useState('all');
   const [selectedConditionFilter, setSelectedConditionFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState(''); // Estado para a barra de pesquisa
+  
   const [selectedEquipment, setSelectedEquipment] = useState<Equipment | null>(null);
   const [editingEquipment, setEditingEquipment] = useState<Equipment | null>(null);
 
@@ -60,7 +63,7 @@ export const FleetManagement: React.FC = () => {
 
   const isFleetManager = currentUser?.role === 'gestor_frotas' || currentUser?.role === 'superadmin';
 
-  // Cross-warehouse fleet scope for fleet manager and superadmin; or warehouse specific for local staff
+  // Cross-warehouse fleet scope + filters + Search Query matching
   const visibleFleet = erpStore.equipment.filter(eq => {
     if (!isFleetManager && eq.warehouseId !== activeWh?.id) {
       return false;
@@ -70,6 +73,13 @@ export const FleetManagement: React.FC = () => {
     }
     if (selectedConditionFilter !== 'all' && eq.condition !== selectedConditionFilter) {
       return false;
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const matchCode = eq.code.toLowerCase().includes(q);
+      const matchName = eq.name.toLowerCase().includes(q);
+      const matchDriver = (eq.assignedDriverName || '').toLowerCase().includes(q);
+      if (!matchCode && !matchName && !matchDriver) return false;
     }
     return true;
   });
@@ -121,7 +131,6 @@ export const FleetManagement: React.FC = () => {
     e.preventDefault();
     if (!editingEquipment) return;
 
-    // Recalculate depreciation
     const depVal = Math.round(
       (editingEquipment.acquisitionCostAOA * editingEquipment.depreciationRateAnnualPercent) / 100
     );
@@ -334,9 +343,9 @@ export const FleetManagement: React.FC = () => {
         </div>
       </div>
 
-      {/* Filters Bar */}
+      {/* Filters Bar & Search Bar */}
       <div className="bg-slate-900 border border-slate-800 rounded-lg p-3 flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div className="flex items-center gap-3 w-full sm:w-auto">
+        <div className="flex items-center gap-3 w-full sm:w-auto flex-wrap">
           {isFleetManager && (
             <div>
               <select
@@ -368,148 +377,166 @@ export const FleetManagement: React.FC = () => {
             </select>
           </div>
         </div>
+
+        {/* Barra de Pesquisa */}
+        <div className="relative w-full sm:w-72">
+          <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Pesquisar por código, nome ou motorista..."
+            className="w-full bg-slate-950 border border-slate-700 rounded pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+          />
+        </div>
       </div>
 
       {/* Fleet Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {visibleFleet.map(eq => {
-          const wh = erpStore.warehouses.find(w => w.id === eq.warehouseId);
-          const maintCount = erpStore.maintenanceRecords.filter(m => m.equipmentId === eq.id).length;
+        {visibleFleet.length === 0 ? (
+          <div className="col-span-full py-12 text-center text-slate-500 bg-slate-900 border border-slate-800 rounded-lg">
+            Nenhum veículo ou equipamento encontrado com os filtros aplicados.
+          </div>
+        ) : (
+          visibleFleet.map(eq => {
+            const wh = erpStore.warehouses.find(w => w.id === eq.warehouseId);
+            const maintCount = erpStore.maintenanceRecords.filter(m => m.equipmentId === eq.id).length;
 
-          const conditionColors: Record<string, string> = {
-            operacional: 'bg-emerald-950 text-emerald-300 border-emerald-800',
-            em_manutencao: 'bg-amber-950 text-amber-300 border-amber-800',
-            inativo: 'bg-slate-800 text-slate-300 border-slate-700',
-            critico: 'bg-red-950 text-red-300 border-red-800',
-          };
+            const conditionColors: Record<string, string> = {
+              operacional: 'bg-emerald-950 text-emerald-300 border-emerald-800',
+              em_manutencao: 'bg-amber-950 text-amber-300 border-amber-800',
+              inativo: 'bg-slate-800 text-slate-300 border-slate-700',
+              critico: 'bg-red-950 text-red-300 border-red-800',
+            };
 
-          return (
-            <div
-              key={eq.id}
-              className="bg-slate-900 border border-slate-800 rounded-lg p-5 space-y-4 hover:border-slate-700 transition-colors"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono font-bold text-sky-400 text-sm">{eq.code}</span>
-                    <span
-                      className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded border ${
-                        conditionColors[eq.condition]
-                      }`}
-                    >
-                      {eq.condition.replace('_', ' ')}
-                    </span>
+            return (
+              <div
+                key={eq.id}
+                className="bg-slate-900 border border-slate-800 rounded-lg p-5 space-y-4 hover:border-slate-700 transition-colors"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-bold text-sky-400 text-sm">{eq.code}</span>
+                      <span
+                        className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded border ${
+                          conditionColors[eq.condition]
+                        }`}
+                      >
+                        {eq.condition.replace('_', ' ')}
+                      </span>
+                    </div>
+                    <h3 className="font-bold text-white text-base mt-1">{eq.name}</h3>
+                    <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-1.5">
+                      <Building2 className="w-3.5 h-3.5 text-slate-500" />
+                      <span>{wh?.name} ({wh?.province})</span>
+                    </div>
                   </div>
-                  <h3 className="font-bold text-white text-base mt-1">{eq.name}</h3>
-                  <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-1.5">
-                    <Building2 className="w-3.5 h-3.5 text-slate-500" />
-                    <span>{wh?.name} ({wh?.province})</span>
-                  </div>
-                </div>
 
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => handlePrintMaintenanceHistory(eq)}
-                    className="p-1.5 text-slate-400 hover:text-sky-400 hover:bg-slate-800 rounded transition-colors"
-                    title="Imprimir Prontuário de Manutenção"
-                  >
-                    <Printer className="w-4 h-4" />
-                  </button>
-
-                  {isFleetManager && (
+                  <div className="flex items-center gap-1">
                     <button
                       type="button"
-                      onClick={() => setEditingEquipment({ ...eq })}
-                      className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-slate-800 rounded transition-colors"
-                      title="Editar Ativo, Depreciação e Motorista"
+                      onClick={() => handlePrintMaintenanceHistory(eq)}
+                      className="p-1.5 text-slate-400 hover:text-sky-400 hover:bg-slate-800 rounded transition-colors"
+                      title="Imprimir Prontuário de Manutenção"
                     >
-                      <Edit2 className="w-4 h-4" />
+                      <Printer className="w-4 h-4" />
                     </button>
-                  )}
-                </div>
-              </div>
 
-              {/* Data Specifications Grid */}
-              <div className="grid grid-cols-2 gap-2 text-xs bg-slate-950 p-3 rounded border border-slate-800">
-                <div>
-                  <span className="text-slate-500 text-[10px] uppercase block">Motorista / Responsável:</span>
-                  <span className="font-semibold text-slate-200">
-                    {eq.assignedDriverName || 'Não Atribuído'}
+                    {isFleetManager && (
+                      <button
+                        type="button"
+                        onClick={() => setEditingEquipment({ ...eq })}
+                        className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-slate-800 rounded transition-colors"
+                        title="Editar Ativo, Depreciação e Motorista"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Data Specifications Grid */}
+                <div className="grid grid-cols-2 gap-2 text-xs bg-slate-950 p-3 rounded border border-slate-800">
+                  <div>
+                    <span className="text-slate-500 text-[10px] uppercase block">Motorista / Responsável:</span>
+                    <span className="font-semibold text-slate-200">
+                      {eq.assignedDriverName || 'Não Atribuído'}
+                    </span>
+                    {eq.driverPhone && (
+                      <span className="text-[10px] text-slate-400 font-mono block">{eq.driverPhone}</span>
+                    )}
+                  </div>
+
+                  <div>
+                    <span className="text-slate-500 text-[10px] uppercase block">Consumo Médio:</span>
+                    <span className="font-semibold text-slate-200">{eq.averageConsumption}</span>
+                  </div>
+
+                  <div>
+                    <span className="text-slate-500 text-[10px] uppercase block">Valor de Aquisição:</span>
+                    <span className="font-mono text-slate-300">{formatAOA(eq.acquisitionCostAOA)}</span>
+                  </div>
+
+                  <div>
+                    <span className="text-slate-500 text-[10px] uppercase block">Aluguel Mensal Atribuído:</span>
+                    <span className="font-mono font-bold text-sky-400">
+                      {formatAOA(eq.monthlyRentalCostAOA)}
+                    </span>
+                  </div>
+
+                  <div>
+                    <span className="text-slate-500 text-[10px] uppercase block">Depreciação Contábil:</span>
+                    <span className="font-mono text-amber-400">
+                      {formatAOA(eq.calculatedDepreciationAOA)} ({eq.depreciationRateAnnualPercent}% a.a.)
+                    </span>
+                  </div>
+
+                  <div>
+                    <span className="text-slate-500 text-[10px] uppercase block">Gasto Acumulado em Reparos:</span>
+                    <span className="font-mono text-red-400 font-bold">
+                      {formatAOA(eq.totalRepairCostAOA)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Action Buttons for Service and Maintenance */}
+                <div className="flex items-center justify-between pt-2 border-t border-slate-800 text-xs">
+                  <span className="text-slate-500 font-mono text-[11px]">
+                    {maintCount} intervenções mecânicas
                   </span>
-                  {eq.driverPhone && (
-                    <span className="text-[10px] text-slate-400 font-mono block">{eq.driverPhone}</span>
-                  )}
-                </div>
 
-                <div>
-                  <span className="text-slate-500 text-[10px] uppercase block">Consumo Médio:</span>
-                  <span className="font-semibold text-slate-200">{eq.averageConsumption}</span>
-                </div>
-
-                <div>
-                  <span className="text-slate-500 text-[10px] uppercase block">Valor de Aquisição:</span>
-                  <span className="font-mono text-slate-300">{formatAOA(eq.acquisitionCostAOA)}</span>
-                </div>
-
-                <div>
-                  <span className="text-slate-500 text-[10px] uppercase block">Aluguel Mensal Atribuído:</span>
-                  <span className="font-mono font-bold text-sky-400">
-                    {formatAOA(eq.monthlyRentalCostAOA)}
-                  </span>
-                </div>
-
-                <div>
-                  <span className="text-slate-500 text-[10px] uppercase block">Depreciação Contábil:</span>
-                  <span className="font-mono text-amber-400">
-                    {formatAOA(eq.calculatedDepreciationAOA)} ({eq.depreciationRateAnnualPercent}% a.a.)
-                  </span>
-                </div>
-
-                <div>
-                  <span className="text-slate-500 text-[10px] uppercase block">Gasto Acumulado em Reparos:</span>
-                  <span className="font-mono text-red-400 font-bold">
-                    {formatAOA(eq.totalRepairCostAOA)}
-                  </span>
-                </div>
-              </div>
-
-              {/* Action Buttons for Service and Maintenance */}
-              <div className="flex items-center justify-between pt-2 border-t border-slate-800 text-xs">
-                <span className="text-slate-500 font-mono text-[11px]">
-                  {maintCount} intervenções mecânicas
-                </span>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedEquipment(eq);
-                      setIsNewServiceReqOpen(true);
-                    }}
-                    className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs font-semibold"
-                  >
-                    Solicitar Serviço
-                  </button>
-
-                  {isFleetManager && (
+                  <div className="flex items-center gap-2">
                     <button
                       type="button"
                       onClick={() => {
                         setSelectedEquipment(eq);
-                        setIsNewMaintModalOpen(true);
+                        setIsNewServiceReqOpen(true);
                       }}
-                      className="px-2.5 py-1 bg-sky-700 hover:bg-sky-600 text-white rounded text-xs font-semibold flex items-center gap-1"
+                      className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs font-semibold"
                     >
-                      <Plus className="w-3 h-3" />
-                      <span>Lançar Manutenção</span>
+                      Solicitar Serviço
                     </button>
-                  )}
+
+                    {isFleetManager && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedEquipment(eq);
+                          setIsNewMaintModalOpen(true);
+                        }}
+                        className="px-2.5 py-1 bg-sky-700 hover:bg-sky-600 text-white rounded text-xs font-semibold flex items-center gap-1"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>Lançar Manutenção</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })
+        )}
       </div>
 
       {/* Modal: Novo Veículo / Equipamento */}
