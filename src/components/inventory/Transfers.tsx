@@ -60,17 +60,20 @@ export const Transfers: React.FC = () => {
       ],
       tables: [
         {
-          headers: ['SKU', 'Designação do Material', 'Qtd. Solicitada', 'Qtd. Enviada / Recebida', 'Estado'],
-          rows: trf.items.map(i => [
-            i.sku,
-            i.productName,
-            `${i.quantity} UN`,
-            `${i.quantity} UN`,
-            trf.status.toUpperCase(),
-          ]),
+          headers: ['SKU', 'Designação do Material', 'Qtd. Solicitada / Enviada', 'Qtd. Efetiva Recebida', 'Estado'],
+          rows: trf.items.map(i => {
+            const finalQty = (i as any).receivedQuantity !== undefined ? (i as any).receivedQuantity : i.quantity;
+            return [
+              i.sku,
+              i.productName,
+              `${i.quantity} UN`,
+              `${finalQty} UN`,
+              trf.status.toUpperCase(),
+            ];
+          }),
         },
       ],
-      notes: `Observações da Operação: ${trf.notes || 'Transferência realizada sob controlo e balanço logístico regional.'}`,
+      notes: `Observações da Operação: ${trf.notes || 'Transferência realizada sob rigoroso controlo de movimentação física e auditoria de estoque.'}`,
       signatures: ['Responsável Armazém Origem (Expedição)', 'Motorista / Transportador (Trânsito)', 'Responsável Armazém Destino (Recepção)'],
     });
   };
@@ -97,7 +100,10 @@ export const Transfers: React.FC = () => {
       `${t.transportDetails?.driverName || 'N/A'} (${t.transportDetails?.vehiclePlate || 'N/A'})`,
       t.transportDetails?.estimatedArrival || 'N/A',
       t.status.toUpperCase(),
-      t.items.map(i => `${i.productName}: ${i.quantity}`).join('; '),
+      t.items.map(i => {
+        const qty = (i as any).receivedQuantity !== undefined ? (i as any).receivedQuantity : i.quantity;
+        return `${i.productName}: ${qty} UN`;
+      }).join('; '),
     ]);
 
     exportToExcel('Relatorio_Transferencias_Inter_Armazens', headers, rows);
@@ -193,16 +199,21 @@ export const Transfers: React.FC = () => {
                         <span className="text-[10px] text-slate-500 block font-mono">{dest?.province}</span>
                       </td>
                       <td className="py-3 px-3">
-                        {/* Exibição Discriminada de cada Item com seu Nome e Quantidade */}
                         <div className="space-y-1">
-                          {trf.items.map((i, idx) => (
-                            <div key={idx} className="text-[11px] text-slate-200 font-mono flex items-center gap-1.5">
-                              <span className="text-sky-400 font-bold">•</span>
-                              <span className="font-semibold">{i.productName}:</span>
-                              <span className="text-amber-300 font-bold">{i.quantity} UN</span>
-                              <span className="text-slate-500 text-[10px]">({i.sku})</span>
-                            </div>
-                          ))}
+                          {trf.items.map((i, idx) => {
+                            const recQty = (i as any).receivedQuantity;
+                            return (
+                              <div key={idx} className="text-[11px] text-slate-200 font-mono flex items-center gap-1.5">
+                                <span className="text-sky-400 font-bold">•</span>
+                                <span className="font-semibold">{i.productName}:</span>
+                                <span className="text-amber-300 font-bold">{i.quantity} UN (Enviado)</span>
+                                {recQty !== undefined && (
+                                  <span className="text-emerald-400 font-bold">➔ {recQty} UN (Recebido)</span>
+                                )}
+                                <span className="text-slate-500 text-[10px]">({i.sku})</span>
+                              </div>
+                            );
+                          })}
                         </div>
                       </td>
                       <td className="py-3 px-3">
@@ -237,7 +248,6 @@ export const Transfers: React.FC = () => {
                       </td>
                       <td className="py-3 px-3 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1.5">
-                          {/* Análise e Aprovação pelo Armazém de Origem */}
                           {(isOrigin || currentUser?.role === 'superadmin') && trf.status === 'solicitada' && (
                             <>
                               <button
@@ -261,7 +271,6 @@ export const Transfers: React.FC = () => {
                             </>
                           )}
 
-                          {/* Conferência Física Item por Item no Armazém de Destino */}
                           {(isDestination || currentUser?.role === 'superadmin') && trf.status === 'em_transito' && (
                             <>
                               <button
@@ -741,7 +750,7 @@ const ApproveTransferModal: React.FC<{
 };
 
 // ==========================================
-// MODAL 3: Conferência Discriminada na Recepção (Item por Item)
+// MODAL 3: Conferência Discriminada na Recepção (Item por Item sem Duplicação)
 // ==========================================
 const ReceiveCheckModal: React.FC<{
   transfer: WarehouseTransfer;
@@ -751,20 +760,20 @@ const ReceiveCheckModal: React.FC<{
   const [receivedItems, setReceivedItems] = useState(
     transfer.items.map(item => ({
       ...item,
-      receivedQuantity: item.quantity, // Por padrão sugere a quantidade enviada pelo motorista
+      receivedQuantity: item.quantity, // Sugere por defeito a quantidade enviada na guia
     }))
   );
 
   const handleConfirmReceipt = (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Atualiza o recebimento no store com as quantidades confirmadas
+    // Grava exatamente a quantidade digitada sem duplicações
     erpStore.receiveTransfer(transfer.id, {
       receivedItems: receivedItems.map(i => ({
         productId: i.productId,
         sku: i.sku,
         productName: i.productName,
-        quantity: i.receivedQuantity,
+        receivedQuantity: i.receivedQuantity,
       })),
     });
 
@@ -778,26 +787,26 @@ const ReceiveCheckModal: React.FC<{
           <div>
             <span className="text-xs text-emerald-400 font-mono font-bold">{transfer.transferCode}</span>
             <h3 className="font-bold text-base text-white">Conferência Física de Entrada Discriminada</h3>
-            <p className="text-xs text-slate-400">Verifique a quantidade real entregue pelo motorista para cada produto individualmente.</p>
+            <p className="text-xs text-slate-400">Insira a quantidade exata contada fisicamente para cada produto.</p>
           </div>
           <button type="button" onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
         </div>
 
         <form onSubmit={handleConfirmReceipt} className="py-4 space-y-4 text-xs">
           <div className="bg-slate-950 p-3 rounded border border-slate-800 space-y-3">
-            <div className="text-[11px] font-semibold text-slate-300">Discriminação das Mercadorias Recebidas:</div>
+            <div className="text-[11px] font-semibold text-slate-300">Entrada Física Discriminada:</div>
 
             {receivedItems.map((item, idx) => (
               <div key={idx} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-2 bg-slate-900 rounded border border-slate-800">
                 <div className="flex-1">
                   <div className="font-semibold text-white text-xs">{item.productName}</div>
                   <div className="text-[10px] text-slate-400 font-mono">
-                    SKU: {item.sku} | Quantidade Despachada na Guia: <strong className="text-amber-400">{item.quantity} UN</strong>
+                    SKU: {item.sku} | Quantidade Despachada pelo Motorista: <strong className="text-amber-400">{item.quantity} UN</strong>
                   </div>
                 </div>
 
                 <div className="w-full sm:w-40">
-                  <label className="text-[10px] text-emerald-400 uppercase block font-semibold">Qtd. Real Recebida</label>
+                  <label className="text-[10px] text-emerald-400 uppercase block font-semibold">Qtd. Real Contada</label>
                   <input
                     type="number"
                     min="0"
@@ -828,7 +837,7 @@ const ReceiveCheckModal: React.FC<{
               type="submit"
               className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-semibold shadow"
             >
-              Confirmar Entrada Exata no Estoque
+              Confirmar Entrada Única no Estoque
             </button>
           </div>
         </form>
@@ -877,7 +886,7 @@ const RejectTransferModal: React.FC<{
               required
               value={reason}
               onChange={e => setReason(e.target.value)}
-              placeholder="Ex: Falta de estoque físico na origem / Material danificado durante o transporte..."
+              placeholder="Ex: Falta de estoque físico / Carga avariada no percurso..."
               className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white focus:border-red-500"
             />
           </div>
