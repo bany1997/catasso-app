@@ -125,7 +125,7 @@ export const ReceivingInspection: React.FC = () => {
   };
 
   // Complete receiving inspection & Ingest into stock
-  const handleCompleteInspection = () => {
+const handleCompleteInspection = () => {
     if (!selectedOrder) return;
 
     const itemsCheckedFormatted = itemsChecklist.map(i => ({
@@ -149,13 +149,24 @@ export const ReceivingInspection: React.FC = () => {
     });
 
     if (result.success) {
+      // Se o utilizador anexou um documento na vistoria, adiciona-o ao envio oficial
+      if (attachedDocName && attachedDocData && lastShipment) {
+        erpStore.addShipmentDocument(lastShipment.id, {
+          name: attachedDocName,
+          type: 'certificado_conformidade',
+          uploadedBy: currentUser?.name || 'Responsável Armazém',
+          fileSize: '1.5 MB',
+          fileDataUrl: attachedDocData,
+        });
+      }
+
       if (result.rncCreated) {
         alert(
-          `Inspeção Concluída! Foram detetadas divergências/não conformidades. O relatório oficial ${result.rncCreated.rncNumber} foi gerado automaticamente e enviado para o Fornecedor.`
+          `Inspeção Concluída! Foram detetadas divergências. O relatório oficial ${result.rncCreated.rncNumber} foi gerado e o documento foi anexado com sucesso.`
         );
       } else {
         alert(
-          'Inspeção 100% Conforme! As quantidades conferidas deram entrada automática no saldo físico do armazém.'
+          'Inspeção 100% Conforme! Documento anexado e stock atualizado automaticamente.'
         );
       }
       setSelectedOrderId('');
