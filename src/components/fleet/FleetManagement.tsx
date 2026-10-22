@@ -28,6 +28,19 @@ export const FleetManagement: React.FC = () => {
   const [selectedEquipment, setSelectedEquipment] = useState<Equipment | null>(null);
   const [editingEquipment, setEditingEquipment] = useState<Equipment | null>(null);
 
+  // New Equipment Modal
+  const [isNewEquipModalOpen, setIsNewEquipModalOpen] = useState(false);
+  const [newCode, setNewCode] = useState('FRO-LUA-VEQ01');
+  const [newName, setNewName] = useState('');
+  const [newType, setNewType] = useState<'empilhadeira' | 'camiao' | 'grua' | 'gerador' | 'veiculo_leve'>('empilhadeira');
+  const [newWarehouseId, setNewWarehouseId] = useState(erpStore.selectedWarehouseId);
+  const [newDriverName, setNewDriverName] = useState('');
+  const [newDriverPhone, setNewDriverPhone] = useState('');
+  const [newAcquisitionCost, setNewAcquisitionCost] = useState(25000000);
+  const [newDepreciationRate, setNewDepreciationRate] = useState(15);
+  const [newMonthlyRental, setNewMonthlyRental] = useState(1200000);
+  const [newConsumption, setNewConsumption] = useState('5.0 L/hora');
+
   // Maintenance record modal
   const [isNewMaintModalOpen, setIsNewMaintModalOpen] = useState(false);
   const [maintType, setMaintType] = useState<'preventiva' | 'corretiva' | 'preditiva' | 'inspecao'>('preventiva');
@@ -65,6 +78,43 @@ export const FleetManagement: React.FC = () => {
   const totalFleetValue = visibleFleet.reduce((sum, e) => sum + e.currentValueAOA, 0);
   const totalRepairs = visibleFleet.reduce((sum, e) => sum + (e.totalRepairCostAOA || 0), 0);
   const totalMonthlyRentalPotential = visibleFleet.reduce((sum, e) => sum + (e.monthlyRentalCostAOA || 0), 0);
+
+  // Create New Equipment Handler
+  const handleCreateEquipment = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newName.trim()) return;
+
+    const depVal = Math.round((newAcquisitionCost * newDepreciationRate) / 100);
+    const curVal = Math.max(0, newAcquisitionCost - depVal);
+
+    erpStore.addEquipment({
+      code: newCode.toUpperCase(),
+      name: newName,
+      type: newType,
+      warehouseId: newWarehouseId,
+      assignedDriverId: `dr-${Date.now()}`,
+      assignedDriverName: newDriverName || 'Operador Padrão',
+      driverPhone: newDriverPhone || '+244 900 000 000',
+      condition: 'operacional',
+      acquisitionCostAOA: newAcquisitionCost,
+      depreciationRateAnnualPercent: newDepreciationRate,
+      calculatedDepreciationAOA: depVal,
+      currentValueAOA: curVal,
+      monthlyRentalCostAOA: newMonthlyRental,
+      averageConsumption: newConsumption,
+      totalRepairCostAOA: 0,
+      lastMaintenanceDate: new Date().toISOString().split('T')[0],
+      nextMaintenanceDate: new Date(Date.now() + 90 * 24 * 3600 * 1000).toISOString().split('T')[0],
+      operatingHoursOrKm: 120,
+      notes: 'Equipamento cadastrado recentemente no sistema CATASSO ERP.',
+    });
+
+    setIsNewEquipModalOpen(false);
+    setNewName('');
+    setNewDriverName('');
+    setNewDriverPhone('');
+    alert('Novo veículo / equipamento cadastrado com sucesso na frota!');
+  };
 
   // Edit Equipment Handler
   const handleSaveEquipment = (e: React.FormEvent) => {
@@ -238,6 +288,17 @@ export const FleetManagement: React.FC = () => {
               <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
               <span>Exportar Frotas (Excel)</span>
             </button>
+
+            {isFleetManager && (
+              <button
+                type="button"
+                onClick={() => setIsNewEquipModalOpen(true)}
+                className="px-3.5 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded text-xs font-bold flex items-center gap-1.5 shadow"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Novo Veículo / Equipamento</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -356,14 +417,16 @@ export const FleetManagement: React.FC = () => {
                     <Printer className="w-4 h-4" />
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={() => setEditingEquipment({ ...eq })}
-                    className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-slate-800 rounded transition-colors"
-                    title="Editar Ativo, Depreciação e Motorista"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
+                  {isFleetManager && (
+                    <button
+                      type="button"
+                      onClick={() => setEditingEquipment({ ...eq })}
+                      className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-slate-800 rounded transition-colors"
+                      title="Editar Ativo, Depreciação e Motorista"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -418,7 +481,6 @@ export const FleetManagement: React.FC = () => {
                 </span>
 
                 <div className="flex items-center gap-2">
-                  {/* Service request button for attendants/managers */}
                   <button
                     type="button"
                     onClick={() => {
@@ -430,24 +492,195 @@ export const FleetManagement: React.FC = () => {
                     Solicitar Serviço
                   </button>
 
-                  {/* Add maintenance for fleet manager */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedEquipment(eq);
-                      setIsNewMaintModalOpen(true);
-                    }}
-                    className="px-2.5 py-1 bg-sky-700 hover:bg-sky-600 text-white rounded text-xs font-semibold flex items-center gap-1"
-                  >
-                    <Plus className="w-3 h-3" />
-                    <span>Lançar Manutenção</span>
-                  </button>
+                  {isFleetManager && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedEquipment(eq);
+                        setIsNewMaintModalOpen(true);
+                      }}
+                      className="px-2.5 py-1 bg-sky-700 hover:bg-sky-600 text-white rounded text-xs font-semibold flex items-center gap-1"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Lançar Manutenção</span>
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
           );
         })}
       </div>
+
+      {/* Modal: Novo Veículo / Equipamento */}
+      {isNewEquipModalOpen && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-lg max-w-lg w-full p-6 text-slate-100 shadow-2xl">
+            <div className="flex items-start justify-between border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="font-bold text-base text-white">Cadastrar Novo Veículo ou Maquinário</h3>
+                <p className="text-xs text-slate-400">Adicionar à frota operacional do CATASSO ERP</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsNewEquipModalOpen(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateEquipment} className="py-4 space-y-3.5 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Código / Placa *</label>
+                  <input
+                    type="text"
+                    required
+                    value={newCode}
+                    onChange={e => setNewCode(e.target.value.toUpperCase())}
+                    placeholder="Ex: FRO-LUA-EMP05"
+                    className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white font-mono font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Tipo de Ativo *</label>
+                  <select
+                    value={newType}
+                    onChange={e => setNewType(e.target.value as any)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white"
+                  >
+                    <option value="empilhadeira">Empilhadeira</option>
+                    <option value="camiao">Camião Pesado</option>
+                    <option value="grua">Grua Telescópica</option>
+                    <option value="gerador">Gerador Industrial</option>
+                    <option value="veiculo_leve">Veículo Leve / Ligeiro</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">Nome / Modelo do Equipamento *</label>
+                <input
+                  type="text"
+                  required
+                  value={newName}
+                  onChange={e => setNewName(e.target.value)}
+                  placeholder="Ex: Empilhadeira Toyota 4.0T Diesel"
+                  className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Armazém Alocado *</label>
+                  <select
+                    value={newWarehouseId}
+                    onChange={e => setNewWarehouseId(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white"
+                  >
+                    {erpStore.warehouses.map(w => (
+                      <option key={w.id} value={w.id}>
+                        {w.name} ({w.province})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Consumo Médio</label>
+                  <input
+                    type="text"
+                    value={newConsumption}
+                    onChange={e => setNewConsumption(e.target.value)}
+                    placeholder="Ex: 5.5 L/hora"
+                    className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Motorista / Responsável</label>
+                  <input
+                    type="text"
+                    value={newDriverName}
+                    onChange={e => setNewDriverName(e.target.value)}
+                    placeholder="Nome do operador certificado"
+                    className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Telefone do Condutor</label>
+                  <input
+                    type="text"
+                    value={newDriverPhone}
+                    onChange={e => setNewDriverPhone(e.target.value)}
+                    placeholder="+244 9..."
+                    className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Custo Aquisição (AOA)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="500000"
+                    value={newAcquisitionCost}
+                    onChange={e => setNewAcquisitionCost(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Taxa Deprec. (% a.a.)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={newDepreciationRate}
+                    onChange={e => setNewDepreciationRate(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">Aluguel Mensal (AOA)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="50000"
+                    value={newMonthlyRental}
+                    onChange={e => setNewMonthlyRental(parseFloat(e.target.value) || 0)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsNewEquipModalOpen(false)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded text-xs font-semibold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded text-xs font-semibold shadow"
+                >
+                  Cadastrar Ativo
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Edit Equipment Modal */}
       {editingEquipment && (
