@@ -15,33 +15,36 @@ import {
   Check,
   Send,
   Boxes,
-  Trash2,
-  XCircle,
-  AlertTriangle,
-  Info,
 } from 'lucide-react';
 
 export const Transfers: React.FC = () => {
   const [isNewTransferOpen, setIsNewTransferOpen] = useState(false);
-  const [approvingTransfer, setApprovingTransfer] = useState<WarehouseTransfer | null>(null);
-  const [receivingTransfer, setReceivingTransfer] = useState<WarehouseTransfer | null>(null);
-  const [rejectingTransfer, setRejectingTransfer] = useState<WarehouseTransfer | null>(null);
 
   const currentUser = erpStore.currentUser;
   const activeWh = erpStore.getActiveWarehouse();
 
-  // Filtro de transferências do armazém ativo ou todas para superadmin
+  // Filter transfers involving active warehouse (or all for superadmin)
   const transfers = erpStore.transfers.filter(trf => {
     if (currentUser?.role === 'superadmin') return true;
     return trf.originWarehouseId === activeWh?.id || trf.destinationWarehouseId === activeWh?.id;
   });
+
+  const handleApprove = (trfId: string) => {
+    erpStore.approveTransfer(trfId);
+    alert('Transferência aprovada e despachada! O estoque foi baixado no armazém de origem.');
+  };
+
+  const handleReceive = (trfId: string) => {
+    erpStore.receiveTransfer(trfId);
+    alert('Transferência recebida com sucesso! Os produtos deram entrada no armazém de destino.');
+  };
 
   const handlePrintTransferDoc = (trf: WarehouseTransfer) => {
     const origin = erpStore.warehouses.find(w => w.id === trf.originWarehouseId);
     const dest = erpStore.warehouses.find(w => w.id === trf.destinationWarehouseId);
 
     printFormalDocument({
-      title: 'Guia Oficial de Remessa & Transferência Inter-Armazéns',
+      title: 'Guia Oficial de Transferência e Comunicação Inter-Armazéns',
       documentNumber: trf.transferCode,
       warehouseName: origin?.name || 'Armazém Origem',
       warehouseProvince: origin?.province || 'Luanda',
@@ -49,32 +52,25 @@ export const Transfers: React.FC = () => {
       authorName: trf.requestedByUserName,
       role: 'Responsável de Armazém',
       metadata: [
-        { label: 'Unidade Remetente (Origem)', value: `${origin?.name} (${origin?.province})` },
-        { label: 'Unidade Destinatária (Destino)', value: `${dest?.name} (${dest?.province})` },
-        { label: 'Data / Hora da Guia', value: new Date(trf.requestDate).toLocaleString('pt-AO') },
-        { label: 'Transportadora / Frota', value: trf.transportDetails?.carrier || 'Frota Interna' },
-        { label: 'Motorista / Condutor', value: `${trf.transportDetails?.driverName || 'N/A'} (${trf.transportDetails?.driverPhone || 'S/Contacto'})` },
-        { label: 'Matrícula do Veículo', value: trf.transportDetails?.vehiclePlate || 'N/A' },
-        { label: 'Previsão de Chegada', value: trf.transportDetails?.estimatedArrival || 'A definir' },
-        { label: 'Status da Guia', value: trf.status.toUpperCase() },
+        { label: 'Armazém de Origem (Remetente)', value: `${origin?.name} (${origin?.province})` },
+        { label: 'Armazém de Destino (Receptor)', value: `${dest?.name} (${dest?.province})` },
+        { label: 'Data da Solicitação', value: new Date(trf.requestDate).toLocaleString('pt-AO') },
+        { label: 'Transporte Designado', value: `${trf.transportDetails?.carrier || 'Frota Interna'} / Matrícula: ${trf.transportDetails?.vehiclePlate || 'N/A'}` },
+        { label: 'Situação da Guia', value: trf.status.toUpperCase() },
       ],
       tables: [
         {
-          headers: ['SKU', 'Designação do Material', 'Qtd. Solicitada', 'Qtd. Efetiva Recebida', 'Estado'],
-          rows: trf.items.map(i => {
-            const finalQty = (i as any).receivedQuantity !== undefined ? (i as any).receivedQuantity : i.quantity;
-            return [
-              i.sku,
-              i.productName,
-              `${i.quantity} UN`,
-              `${finalQty} UN`,
-              trf.status.toUpperCase(),
-            ];
-          }),
+          headers: ['Código SKU', 'Descrição Técnica do Material', 'Qtd. a Transferir', 'Status Item'],
+          rows: trf.items.map(i => [
+            i.sku,
+            i.productName,
+            `${i.quantity} UN`,
+            trf.status.toUpperCase(),
+          ]),
         },
       ],
-      notes: `Observações da Operação: ${trf.notes || 'Transferência realizada sob rigoroso controlo de movimentação física e auditoria de estoque.'}`,
-      signatures: ['Responsável Armazém Origem (Expedição)', 'Motorista / Transportador (Trânsito)', 'Responsável Armazém Destino (Recepção)'],
+      notes: `Observações Operacionais: ${trf.notes || 'Transferência realizada sob protocolo de contingência e balanceamento de estoque industrial.'}`,
+      signatures: ['Responsável Armazém Origem', 'Condutor / Transportador', 'Responsável Armazém Destino'],
     });
   };
 
@@ -85,10 +81,8 @@ export const Transfers: React.FC = () => {
       'Origem',
       'Destino',
       'Solicitante',
-      'Motorista / Veículo',
-      'Previsão Chegada',
       'Status',
-      'Detalhes dos Itens',
+      'Qtd Itens',
     ];
 
     const rows = transfers.map(t => [
@@ -97,13 +91,8 @@ export const Transfers: React.FC = () => {
       erpStore.warehouses.find(w => w.id === t.originWarehouseId)?.name || 'Origem',
       erpStore.warehouses.find(w => w.id === t.destinationWarehouseId)?.name || 'Destino',
       t.requestedByUserName,
-      `${t.transportDetails?.driverName || 'N/A'} (${t.transportDetails?.vehiclePlate || 'N/A'})`,
-      t.transportDetails?.estimatedArrival || 'N/A',
       t.status.toUpperCase(),
-      t.items.map(i => {
-        const qty = (i as any).receivedQuantity !== undefined ? (i as any).receivedQuantity : i.quantity;
-        return `${i.productName}: ${qty} UN`;
-      }).join('; '),
+      t.items.reduce((s, i) => s + i.quantity, 0),
     ]);
 
     exportToExcel('Relatorio_Transferencias_Inter_Armazens', headers, rows);
@@ -116,10 +105,10 @@ export const Transfers: React.FC = () => {
         <div>
           <h1 className="text-xl font-bold text-white flex items-center gap-2">
             <Building className="w-5 h-5 text-sky-400" />
-            <span>Comunicação & Logística Inter-Armazéns</span>
+            <span>Comunicação & Transferência Entre Armazéns</span>
           </h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            Protocolo de requisição multilinhas, validação de saldos na origem, despacho e conferência discriminada item a item no destino.
+            Intercâmbio de materiais entre unidades (Luanda, Lobito, Soyo, Huambo) com controle bilateral de estoques e guias de remessa.
           </p>
         </div>
 
@@ -138,7 +127,7 @@ export const Transfers: React.FC = () => {
             className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded text-xs font-semibold flex items-center gap-1.5 shadow-sm"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>Solicitar Vários Produtos</span>
+            <span>Nova Transferência</span>
           </button>
         </div>
       </div>
@@ -151,19 +140,19 @@ export const Transfers: React.FC = () => {
               <tr className="bg-slate-950 text-slate-400 border-b border-slate-800 font-semibold">
                 <th className="py-2.5 px-3">Código Guia</th>
                 <th className="py-2.5 px-3">Data</th>
-                <th className="py-2.5 px-3">Remetente (Origem)</th>
-                <th className="py-2.5 px-3">Destinatário</th>
-                <th className="py-2.5 px-3">Discriminação dos Produtos</th>
-                <th className="py-2.5 px-3">Motorista & Transporte</th>
+                <th className="py-2.5 px-3">Armazém Origem</th>
+                <th className="py-2.5 px-3">Armazém Destino</th>
+                <th className="py-2.5 px-3">Itens / Quantidades</th>
+                <th className="py-2.5 px-3">Solicitante</th>
                 <th className="py-2.5 px-3 text-center">Status</th>
-                <th className="py-2.5 px-3 text-right">Ações Operacionais</th>
+                <th className="py-2.5 px-3 text-right">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
               {transfers.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-8 text-center text-slate-500">
-                    Nenhuma transferência inter-armazém registrada até ao momento.
+                    Nenhuma transferência inter-armazém registrada.
                   </td>
                 </tr>
               ) : (
@@ -199,43 +188,15 @@ export const Transfers: React.FC = () => {
                         <span className="text-[10px] text-slate-500 block font-mono">{dest?.province}</span>
                       </td>
                       <td className="py-3 px-3">
-                        <div className="space-y-1">
-                          {trf.items.map((i, idx) => {
-                            const recQty = (i as any).receivedQuantity;
-                            return (
-                              <div key={idx} className="text-[11px] text-slate-200 font-mono flex items-center gap-1.5">
-                                <span className="text-sky-400 font-bold">•</span>
-                                <span className="font-semibold">{i.productName}:</span>
-                                <span className="text-amber-300 font-bold">{i.quantity} UN (Enviado)</span>
-                                {recQty !== undefined && (
-                                  <span className="text-emerald-400 font-bold">➔ {recQty} UN (Recebido)</span>
-                                )}
-                                <span className="text-slate-500 text-[10px]">({i.sku})</span>
-                              </div>
-                            );
-                          })}
+                        <div className="font-mono text-slate-300">
+                          {trf.items.map(i => `${i.sku} (${i.quantity} UN)`).join(', ')}
+                        </div>
+                        <div className="text-[10px] text-slate-500 truncate max-w-xs">
+                          {trf.items.map(i => i.productName).join(', ')}
                         </div>
                       </td>
-                      <td className="py-3 px-3">
-                        {trf.transportDetails?.driverName ? (
-                          <div>
-                            <div className="font-semibold text-slate-200 flex items-center gap-1">
-                              <Truck className="w-3 h-3 text-sky-400" />
-                              <span>{trf.transportDetails.driverName}</span>
-                            </div>
-                            <div className="text-[10px] text-slate-400 font-mono">
-                              Placa: {trf.transportDetails.vehiclePlate || 'N/A'} | Tel: {trf.transportDetails.driverPhone || 'N/A'}
-                            </div>
-                            {trf.transportDetails.estimatedArrival && (
-                              <div className="text-[10px] text-emerald-400 font-mono flex items-center gap-1 mt-0.5">
-                                <Clock className="w-2.5 h-2.5" />
-                                <span>Chegada: {trf.transportDetails.estimatedArrival}</span>
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-[10px] text-slate-500 italic">Aguardando Expedição</span>
-                        )}
+                      <td className="py-3 px-3 text-slate-400 whitespace-nowrap">
+                        {trf.requestedByUserName}
                       </td>
                       <td className="py-3 px-3 text-center whitespace-nowrap">
                         <span
@@ -248,57 +209,37 @@ export const Transfers: React.FC = () => {
                       </td>
                       <td className="py-3 px-3 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1.5">
+                          {/* Approval by origin warehouse manager */}
                           {(isOrigin || currentUser?.role === 'superadmin') && trf.status === 'solicitada' && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => setApprovingTransfer(trf)}
-                                className="px-2 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded text-[11px] font-semibold flex items-center gap-1 shadow"
-                                title="Analisar Estoque, Ajustar e Despachar Motorista"
-                              >
-                                <Send className="w-3 h-3" />
-                                <span>Analisar & Despachar</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setRejectingTransfer(trf)}
-                                className="px-2 py-1 bg-red-900 hover:bg-red-800 text-red-200 rounded text-[11px] font-semibold flex items-center gap-1"
-                                title="Reprovar/Rejeitar Pedido"
-                              >
-                                <XCircle className="w-3 h-3" />
-                                <span>Reprovar</span>
-                              </button>
-                            </>
+                            <button
+                              type="button"
+                              onClick={() => handleApprove(trf.id)}
+                              className="px-2 py-1 bg-sky-700 hover:bg-sky-600 text-white rounded text-[11px] font-semibold flex items-center gap-1"
+                              title="Aprovar e Despachar Carga"
+                            >
+                              <Send className="w-3 h-3" />
+                              <span>Aprovar & Despachar</span>
+                            </button>
                           )}
 
+                          {/* Confirmation of arrival at destination warehouse */}
                           {(isDestination || currentUser?.role === 'superadmin') && trf.status === 'em_transito' && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => setReceivingTransfer(trf)}
-                                className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-600 text-white rounded text-[11px] font-semibold flex items-center gap-1 shadow"
-                                title="Conferir Entrada de Cada Item no Estoque"
-                              >
-                                <Check className="w-3 h-3" />
-                                <span>Conferir & Receber</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setRejectingTransfer(trf)}
-                                className="px-2 py-1 bg-red-900 hover:bg-red-800 text-red-200 rounded text-[11px] font-semibold flex items-center gap-1"
-                                title="Rejeitar Carga Recebida"
-                              >
-                                <XCircle className="w-3 h-3" />
-                                <span>Rejeitar</span>
-                              </button>
-                            </>
+                            <button
+                              type="button"
+                              onClick={() => handleReceive(trf.id)}
+                              className="px-2 py-1 bg-emerald-700 hover:bg-emerald-600 text-white rounded text-[11px] font-semibold flex items-center gap-1"
+                              title="Confirmar Chegada e Ingerir no Estoque"
+                            >
+                              <Check className="w-3 h-3" />
+                              <span>Receber no Estoque</span>
+                            </button>
                           )}
 
                           <button
                             type="button"
                             onClick={() => handlePrintTransferDoc(trf)}
-                            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-sky-400 rounded transition-colors"
-                            title="Imprimir Guia Oficial (PDF)"
+                            className="p-1 text-slate-400 hover:text-sky-400 hover:bg-slate-800 rounded"
+                            title="Imprimir Guia de Transferência Oficial"
                           >
                             <Printer className="w-3.5 h-3.5" />
                           </button>
@@ -313,49 +254,13 @@ export const Transfers: React.FC = () => {
         </div>
       </div>
 
-      {/* MODAL 1: Solicitar Vários Produtos */}
+      {/* New Transfer Request Modal */}
       {isNewTransferOpen && (
-        <NewMultiTransferModal
+        <NewTransferModal
           onClose={() => setIsNewTransferOpen(false)}
           onSuccess={() => {
             setIsNewTransferOpen(false);
-            alert('Solicitação de transferência enviada com sucesso ao armazém remetente!');
-          }}
-        />
-      )}
-
-      {/* MODAL 2: Análise e Despacho */}
-      {approvingTransfer && (
-        <ApproveTransferModal
-          transfer={approvingTransfer}
-          onClose={() => setApprovingTransfer(null)}
-          onSuccess={() => {
-            setApprovingTransfer(null);
-            alert('Transferência aprovada! Carga despachada com os valores reais definidos.');
-          }}
-        />
-      )}
-
-      {/* MODAL 3: Conferência Discriminada de Entrada no Destino */}
-      {receivingTransfer && (
-        <ReceiveCheckModal
-          transfer={receivingTransfer}
-          onClose={() => setReceivingTransfer(null)}
-          onSuccess={() => {
-            setReceivingTransfer(null);
-            alert('Conferência concluída com sucesso! Entrada única efetuada no estoque do armazém de destino.');
-          }}
-        />
-      )}
-
-      {/* MODAL 4: Reprovar / Rejeitar Transferência */}
-      {rejectingTransfer && (
-        <RejectTransferModal
-          transfer={rejectingTransfer}
-          onClose={() => setRejectingTransfer(null)}
-          onSuccess={() => {
-            setRejectingTransfer(null);
-            alert('Transferência reprovada/rejeitada e registada no histórico do ERP.');
+            alert('Transferência solicitada com sucesso!');
           }}
         />
       )}
@@ -363,15 +268,8 @@ export const Transfers: React.FC = () => {
   );
 };
 
-// ==========================================
-// MODAL 1: Solicitação Multilinhas
-// ==========================================
-interface TransferLine {
-  sku: string;
-  quantity: number;
-}
-
-const NewMultiTransferModal: React.FC<{ onClose: () => void; onSuccess: () => void }> = ({
+// Modal for creating transfer
+const NewTransferModal: React.FC<{ onClose: () => void; onSuccess: () => void }> = ({
   onClose,
   onSuccess,
 }) => {
@@ -379,56 +277,35 @@ const NewMultiTransferModal: React.FC<{ onClose: () => void; onSuccess: () => vo
   const otherWhs = erpStore.warehouses.filter(w => w.id !== activeWh?.id);
 
   const [originWhId, setOriginWhId] = useState(otherWhs[0]?.id || '');
-  const [notes, setNotes] = useState('Solicitação de contingência para reposição de estoque.');
-  const [lines, setLines] = useState<TransferLine[]>([
-    { sku: 'SKU-00001', quantity: 4 },
-    { sku: 'SKU-00002', quantity: 3 },
-  ]);
-
-  const handleAddLine = () => {
-    setLines([...lines, { sku: '', quantity: 1 }]);
-  };
-
-  const handleRemoveLine = (index: number) => {
-    setLines(lines.filter((_, i) => i !== index));
-  };
+  const [sku, setSku] = useState('SKU-00003');
+  const [quantity, setQuantity] = useState(5);
+  const [notes, setNotes] = useState('Contingência para suporte operacional.');
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!originWhId) {
-      alert('Selecione o armazém fornecedor de origem.');
+    const prod = catalogService.getProductBySku(sku);
+    if (!prod || !activeWh || quantity <= 0) {
+      alert('Produto ou quantidade inválida.');
       return;
-    }
-    if (lines.length === 0) {
-      alert('Adicione pelo menos um produto na solicitação.');
-      return;
-    }
-
-    const validItems = [];
-    for (const line of lines) {
-      const prod = catalogService.getProductBySku(line.sku.trim().toUpperCase());
-      if (!prod) {
-        alert(`SKU não encontrado no catálogo do sistema: ${line.sku}`);
-        return;
-      }
-      if (line.quantity <= 0) {
-        alert(`Quantidade inválida para o SKU ${prod.sku}`);
-        return;
-      }
-      validItems.push({
-        productId: prod.id,
-        sku: prod.sku,
-        productName: prod.name,
-        quantity: line.quantity,
-      });
     }
 
     erpStore.requestTransfer({
       originWarehouseId: originWhId,
-      destinationWarehouseId: activeWh?.id || 'wh-luanda',
+      destinationWarehouseId: activeWh.id,
       requestedByUserId: erpStore.currentUser?.id || 'sys',
       requestedByUserName: erpStore.currentUser?.name || 'Responsável Armazém',
-      items: validItems,
+      items: [
+        {
+          productId: prod.id,
+          sku: prod.sku,
+          productName: prod.name,
+          quantity,
+        },
+      ],
+      transportDetails: {
+        carrier: 'Frota Interna CATASSO',
+        vehiclePlate: 'LD-44-89-HP',
+      },
       notes,
     });
 
@@ -437,22 +314,22 @@ const NewMultiTransferModal: React.FC<{ onClose: () => void; onSuccess: () => vo
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-700 rounded-lg max-w-2xl w-full p-6 text-slate-100 shadow-2xl max-h-[90vh] overflow-y-auto">
+      <div className="bg-slate-900 border border-slate-700 rounded-lg max-w-md w-full p-6 text-slate-100 shadow-2xl">
         <div className="flex items-start justify-between border-b border-slate-800 pb-3">
           <div>
-            <h3 className="font-bold text-base text-white">Solicitação de Produtos Inter-Armazéns</h3>
-            <p className="text-xs text-slate-400">Armazém Solicitante (Destino): <strong className="text-sky-400">{activeWh?.name}</strong></p>
+            <h3 className="font-bold text-base text-white">Solicitar Transferência de Armazém</h3>
+            <p className="text-xs text-slate-400">Destino: {activeWh?.name}</p>
           </div>
           <button type="button" onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
         </div>
 
-        <form onSubmit={handleCreate} className="py-4 space-y-4 text-xs">
+        <form onSubmit={handleCreate} className="py-4 space-y-3 text-xs">
           <div>
-            <label className="block text-slate-300 font-semibold mb-1">Armazém Remetente (Fornecedor) *</label>
+            <label className="block text-slate-300 font-semibold mb-1">Armazém Fornecedor (Origem) *</label>
             <select
               value={originWhId}
               onChange={e => setOriginWhId(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white font-semibold"
+              className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white focus:border-sky-500"
             >
               {otherWhs.map(w => (
                 <option key={w.id} value={w.id}>
@@ -463,451 +340,36 @@ const NewMultiTransferModal: React.FC<{ onClose: () => void; onSuccess: () => vo
           </div>
 
           <div>
-            <label className="block text-slate-300 font-semibold mb-1">Justificativa / Motivo da Transferência</label>
+            <label className="block text-slate-300 font-semibold mb-1">Código SKU do Material *</label>
             <input
               type="text"
+              required
+              value={sku}
+              onChange={e => setSku(e.target.value.toUpperCase())}
+              placeholder="Ex: SKU-00003"
+              className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white font-mono focus:border-sky-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-slate-300 font-semibold mb-1">Quantidade Requisitada *</label>
+            <input
+              type="number"
+              min="1"
+              required
+              value={quantity}
+              onChange={e => setQuantity(parseInt(e.target.value, 10) || 1)}
+              className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white font-mono focus:border-sky-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-slate-300 font-semibold mb-1">Justificativa da Transferência</label>
+            <textarea
+              rows={2}
               value={notes}
               onChange={e => setNotes(e.target.value)}
-              className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white"
-            />
-          </div>
-
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="font-semibold text-slate-200">Produtos a Requisitar:</span>
-              <button
-                type="button"
-                onClick={handleAddLine}
-                className="px-2.5 py-1 bg-sky-700 hover:bg-sky-600 text-white rounded text-[11px] flex items-center gap-1 font-semibold"
-              >
-                <Plus className="w-3 h-3" /> Adicionar Item
-              </button>
-            </div>
-
-            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-              {lines.map((line, idx) => (
-                <div key={idx} className="flex items-center gap-2 bg-slate-950 p-2 rounded border border-slate-800">
-                  <div className="flex-1">
-                    <label className="text-[10px] text-slate-400 uppercase block">Código SKU *</label>
-                    <input
-                      type="text"
-                      required
-                      value={line.sku}
-                      onChange={e => {
-                        const newLines = [...lines];
-                        newLines[idx].sku = e.target.value.toUpperCase();
-                        setLines(newLines);
-                      }}
-                      placeholder="Ex: SKU-00001"
-                      className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-white font-mono"
-                    />
-                  </div>
-
-                  <div className="w-32">
-                    <label className="text-[10px] text-slate-400 uppercase block">Qtd. Pretendida *</label>
-                    <input
-                      type="number"
-                      min="1"
-                      required
-                      value={line.quantity}
-                      onChange={e => {
-                        const newLines = [...lines];
-                        newLines[idx].quantity = parseInt(e.target.value, 10) || 1;
-                        setLines(newLines);
-                      }}
-                      className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-white font-mono"
-                    />
-                  </div>
-
-                  {lines.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveLine(idx)}
-                      className="mt-4 p-1.5 bg-red-950 hover:bg-red-900 text-red-300 rounded"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded text-xs font-semibold"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded text-xs font-semibold shadow"
-            >
-              Enviar Pedido
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-};
-
-
-// ==========================================
-// MODAL 2: Análise e Despacho na Origem
-// ==========================================
-const ApproveTransferModal: React.FC<{
-  transfer: WarehouseTransfer;
-  onClose: () => void;
-  onSuccess: () => void;
-}> = ({ transfer, onClose, onSuccess }) => {
-  const originWh = erpStore.warehouses.find(w => w.id === transfer.originWarehouseId);
-  const destWh = erpStore.warehouses.find(w => w.id === transfer.destinationWarehouseId);
-
-  const [itemsToShip, setItemsToShip] = useState(
-    transfer.items.map(item => {
-      const prod = catalogService.getProductBySku(item.sku);
-      const availableStock = prod ? (prod.stockLevels[transfer.originWarehouseId] || 0) : 0;
-      return {
-        ...item,
-        availableStock,
-        approvedQty: Math.min(item.quantity, availableStock),
-      };
-    })
-  );
-
-  const [carrier, setCarrier] = useState('Frota Própria CATASSO ERP');
-  const [driverName, setDriverName] = useState('Mateus Kitumba');
-  const [driverPhone, setDriverPhone] = useState('+244 923 888 111');
-  const [vehiclePlate, setVehiclePlate] = useState('LD-89-32-GZ');
-  const [estimatedArrival, setEstimatedArrival] = useState('23/10/2026 às 14:00');
-
-  const handleConfirmDespatch = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    const totalApproved = itemsToShip.reduce((acc, i) => acc + i.approvedQty, 0);
-    if (totalApproved <= 0) {
-      alert('A quantidade a enviar não pode ser zero para todos os produtos.');
-      return;
-    }
-
-    for (const item of itemsToShip) {
-      if (item.approvedQty > item.availableStock) {
-        alert(`A quantidade aprovada para o produto ${item.productName} (${item.approvedQty} UN) excede o estoque físico disponível no armazém (${item.availableStock} UN).`);
-        return;
-      }
-    }
-
-    // Delega tudo para o store centralizado (evita duplicações)
-    const success = erpStore.approveTransfer(transfer.id, {
-      items: itemsToShip.map(i => ({
-        productId: i.productId,
-        sku: i.sku,
-        productName: i.productName,
-        quantity: i.approvedQty,
-      })),
-      transportDetails: {
-        carrier,
-        driverName,
-        driverPhone,
-        vehiclePlate,
-        estimatedArrival,
-      },
-    });
-
-    if (success) {
-      onSuccess();
-    } else {
-      alert('Erro ao aprovar transferência.');
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-700 rounded-lg max-w-2xl w-full p-6 text-slate-100 shadow-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-start justify-between border-b border-slate-800 pb-3">
-          <div>
-            <span className="text-xs text-amber-400 font-mono font-bold">{transfer.transferCode}</span>
-            <h3 className="font-bold text-base text-white">Análise de Estoque e Despacho de Carga</h3>
-            <p className="text-xs text-slate-400">Origem: {originWh?.name} ➔ Destino: {destWh?.name}</p>
-          </div>
-          <button type="button" onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
-        </div>
-
-        <form onSubmit={handleConfirmDespatch} className="py-4 space-y-4 text-xs">
-          <div>
-            <label className="block text-slate-200 font-bold mb-2 flex items-center gap-1.5">
-              <Boxes className="w-4 h-4 text-sky-400" />
-              <span>1. Definição de Quantidade Real a Enviar Por Item:</span>
-            </label>
-
-            <div className="space-y-2 bg-slate-950 p-3 rounded border border-slate-800">
-              {itemsToShip.map((item, idx) => (
-                <div key={idx} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-2 last:border-0 last:pb-0">
-                  <div>
-                    <div className="font-mono font-bold text-white">{item.productName} ({item.sku})</div>
-                    <div className="text-[10px] text-slate-400">
-                      Pedido do Destino: <strong className="text-amber-400">{item.quantity} UN</strong> |
-                      Estoque Físico na Origem: <strong className={item.availableStock >= item.quantity ? 'text-emerald-400' : 'text-red-400'}>{item.availableStock} UN</strong>
-                    </div>
-                  </div>
-
-                  <div className="w-full sm:w-36">
-                    <label className="text-[10px] text-emerald-400 uppercase block font-semibold">Qtd. Efetiva Aprovada</label>
-                    <input
-                      type="number"
-                      min="0"
-                      max={item.availableStock}
-                      value={item.approvedQty}
-                      onChange={e => {
-                        const val = parseInt(e.target.value, 10) || 0;
-                        const newItems = [...itemsToShip];
-                        newItems[idx].approvedQty = val;
-                        setItemsToShip(newItems);
-                      }}
-                      className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-emerald-400 font-mono font-bold focus:border-amber-500"
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <label className="block text-slate-200 font-bold flex items-center gap-1.5">
-              <Truck className="w-4 h-4 text-emerald-400" />
-              <span>2. Dados do Transporte e Motorista Responsável:</span>
-            </label>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">Empresa / Transportadora *</label>
-                <input
-                  type="text"
-                  required
-                  value={carrier}
-                  onChange={e => setCarrier(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">Nome do Motorista *</label>
-                <input
-                  type="text"
-                  required
-                  value={driverName}
-                  onChange={e => setDriverName(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">Telefone *</label>
-                <input
-                  type="text"
-                  required
-                  value={driverPhone}
-                  onChange={e => setDriverPhone(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white font-mono"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">Matrícula do Veículo *</label>
-                <input
-                  type="text"
-                  required
-                  value={vehiclePlate}
-                  onChange={e => setVehiclePlate(e.target.value.toUpperCase())}
-                  className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white font-mono uppercase"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">Previsão de Chegada *</label>
-                <input
-                  type="text"
-                  required
-                  value={estimatedArrival}
-                  onChange={e => setEstimatedArrival(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-emerald-400 font-mono font-semibold"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded text-xs font-semibold"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-semibold shadow"
-            >
-              Aprovar, Despachar & Iniciar Trânsito
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-};
-
-
-// ==========================================
-// MODAL 3: Conferência Discriminada no Destino
-// ==========================================
-// ==========================================
-// MODAL 3: Conferência Discriminada no Destino (Sem alterar a Qtd Solicitada)
-// ==========================================
-const ReceiveCheckModal: React.FC<{
-  transfer: WarehouseTransfer;
-  onClose: () => void;
-  onSuccess: () => void;
-}> = ({ transfer, onClose, onSuccess }) => {
-  const [receivedItems, setReceivedItems] = useState(
-    transfer.items.map(item => ({
-      ...item,
-      receivedQuantity: item.quantity, // Sugere por defeito o que foi enviado
-    }))
-  );
-
-  const handleConfirmReceipt = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    const success = erpStore.receiveTransfer(transfer.id, {
-      receivedItems: receivedItems.map(i => ({
-        productId: i.productId,
-        sku: i.sku,
-        productName: i.productName,
-        receivedQuantity: i.receivedQuantity,
-      })),
-    });
-
-    if (success) {
-      onSuccess();
-    } else {
-      alert('Erro ao processar recebimento.');
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-700 rounded-lg max-w-2xl w-full p-6 text-slate-100 shadow-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-start justify-between border-b border-slate-800 pb-3">
-          <div>
-            <span className="text-xs text-emerald-400 font-mono font-bold">{transfer.transferCode}</span>
-            <h3 className="font-bold text-base text-white">Conferência Física de Entrada Discriminada</h3>
-            <p className="text-xs text-slate-400">Insira a quantidade exata contada fisicamente para cada produto.</p>
-          </div>
-          <button type="button" onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
-        </div>
-
-        <form onSubmit={handleConfirmReceipt} className="py-4 space-y-4 text-xs">
-          <div className="bg-slate-950 p-3 rounded border border-slate-800 space-y-3">
-            <div className="text-[11px] font-semibold text-slate-300">Entrada Física Discriminada:</div>
-
-            {receivedItems.map((item, idx) => (
-              <div key={idx} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-2 bg-slate-900 rounded border border-slate-800">
-                <div className="flex-1">
-                  <div className="font-semibold text-white text-xs">{item.productName}</div>
-                  <div className="text-[10px] text-slate-400 font-mono">
-                    SKU: {item.sku} | Quantidade Despachada pelo Motorista: <strong className="text-amber-400">{item.quantity} UN</strong>
-                  </div>
-                </div>
-
-                <div className="w-full sm:w-40">
-                  <label className="text-[10px] text-emerald-400 uppercase block font-semibold">Qtd. Real Contada</label>
-                  <input
-                    type="number"
-                    min="0"
-                    required
-                    value={item.receivedQuantity}
-                    onChange={e => {
-                      const val = parseInt(e.target.value, 10) || 0;
-                      const newItems = [...receivedItems];
-                      newItems[idx].receivedQuantity = val;
-                      setReceivedItems(newItems);
-                    }}
-                    className="w-full bg-slate-950 border border-slate-700 rounded p-1.5 text-emerald-400 font-mono font-bold focus:border-emerald-500"
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="pt-3 border-t border-slate-800 flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded text-xs font-semibold"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-semibold shadow"
-            >
-              Confirmar Entrada Única no Estoque
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-};
-
-// ==========================================
-// MODAL 4: Reprovar / Rejeitar Transferência
-// ==========================================
-const RejectTransferModal: React.FC<{
-  transfer: WarehouseTransfer;
-  onClose: () => void;
-  onSuccess: () => void;
-}> = ({ transfer, onClose, onSuccess }) => {
-  const [reason, setReason] = useState('');
-
-  const handleReject = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!reason.trim()) {
-      alert('Por favor, informe o motivo da reprovação/rejeição.');
-      return;
-    }
-
-    erpStore.rejectTransfer(transfer.id, reason.trim());
-    onSuccess();
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-700 rounded-lg max-w-md w-full p-6 text-slate-100 shadow-2xl">
-        <div className="flex items-start justify-between border-b border-slate-800 pb-3">
-          <div>
-            <span className="text-xs text-red-400 font-mono font-bold">{transfer.transferCode}</span>
-            <h3 className="font-bold text-base text-white">Reprovar / Rejeitar Transferência</h3>
-          </div>
-          <button type="button" onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
-        </div>
-
-        <form onSubmit={handleReject} className="py-4 space-y-3 text-xs">
-          <div>
-            <label className="block text-slate-300 font-semibold mb-1">Motivo / Justificativa da Reprovação *</label>
-            <textarea
-              rows={3}
-              required
-              value={reason}
-              onChange={e => setReason(e.target.value)}
-              placeholder="Ex: Falta de estoque físico / Carga avariada no percurso..."
-              className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white focus:border-red-500"
+              className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-white focus:border-sky-500"
             />
           </div>
 
@@ -921,9 +383,9 @@ const RejectTransferModal: React.FC<{
             </button>
             <button
               type="submit"
-              className="px-4 py-2 bg-red-700 hover:bg-red-600 text-white rounded text-xs font-semibold shadow"
+              className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded text-xs font-semibold"
             >
-              Confirmar Reprovação
+              Enviar Pedido de Transferência
             </button>
           </div>
         </form>
