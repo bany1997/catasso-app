@@ -97,9 +97,29 @@ export const FleetManagement: React.FC = () => {
     return true;
   });
 
-  const handleUpdateServiceStatus = (reqId: string, newStatus: 'pendente' | 'em_execucao' | 'concluida' | 'cancelada') => {
+const handleUpdateServiceStatus = (reqId: string, newStatus: 'pendente' | 'em_execucao' | 'concluida' | 'cancelada') => {
+    const serviceReq = erpStore.serviceRequests.find(sr => sr.id === reqId);
+    if (!serviceReq) return;
+
+    // Atualiza o status da solicitação para o solicitante ver
     erpStore.updateServiceRequest(reqId, { status: newStatus });
-    alert(`Status da solicitação atualizado para: ${newStatus.toUpperCase()}`);
+
+    // Se o gestor concluiu o serviço, alimenta automaticamente o Prontuário de Manutenção do equipamento!
+    if (newStatus === 'concluida') {
+      erpStore.addMaintenanceRecord({
+        equipmentId: serviceReq.equipmentId,
+        date: new Date().toISOString().split('T')[0],
+        type: serviceReq.requestType === 'manutencao_preventiva' ? 'preventiva' : 'corretiva',
+        description: `[Via Solicitação ${serviceReq.code}] ${serviceReq.description}`,
+        costAOA: 150000, // Custo padrão inicial estimado que pode ser editado ou ajustado depois se necessário
+        partsReplaced: ['Reparo Geral / Ajuste Técnico'],
+        performedBy: currentUser?.name || 'Oficina / Gestão de Frotas',
+        nextScheduledDate: new Date(Date.now() + 90 * 24 * 3600 * 1000).toISOString().split('T')[0],
+      });
+      alert('Solicitação concluída com sucesso! O registro foi incorporado automaticamente no Prontuário de Manutenção do equipamento.');
+    } else {
+      alert(`Status da solicitação atualizado para: ${newStatus.toUpperCase()}`);
+    }
   };
 
   // Create New Equipment Handler
