@@ -1128,23 +1128,13 @@ constructor() {
     return newTransfer;
   }
 
-public approveTransfer(transferId: string, approvalData?: { items: any[]; transportDetails: any }): boolean {
+  public approveTransfer(transferId: string): boolean {
     const trf = this.transfers.find(t => t.id === transferId);
     if (!trf) return false;
     trf.status = 'em_transito';
     trf.approvalDate = new Date().toISOString();
 
-    // Se o gestor ajustou quantidades ou informou detalhes do motorista no modal
-    if (approvalData) {
-      if (approvalData.items && approvalData.items.length > 0) {
-        trf.items = approvalData.items;
-      }
-      if (approvalData.transportDetails) {
-        trf.transportDetails = approvalData.transportDetails;
-      }
-    }
-
-    // Deduct stock from origin warehouse based on the actual approved quantities
+    // Deduct stock from origin warehouse
     trf.items.forEach(item => {
       const prod = catalogService.getProductById(item.productId);
       if (prod) {
@@ -1165,7 +1155,7 @@ public approveTransfer(transferId: string, approvalData?: { items: any[]; transp
           requesterOrRecipient: `Armazém Destino: ${this.warehouses.find(w => w.id === trf.destinationWarehouseId)?.name}`,
           executedByUserId: this.currentUser?.id || 'sys',
           executedByUserName: this.currentUser?.name || 'Sistema',
-          notes: 'Saída por transferência inter-armazém aprovada e despachada',
+          notes: 'Saída por transferência inter-armazém aprovada',
         });
       }
     });
@@ -1174,34 +1164,18 @@ public approveTransfer(transferId: string, approvalData?: { items: any[]; transp
     return true;
   }
 
-public receiveTransfer(transferId: string, receiptData?: { receivedItems: any[] }): boolean {
+  public receiveTransfer(transferId: string): boolean {
     const trf = this.transfers.find(t => t.id === transferId);
-    if (!trf || trf.status === 'recebida') return false;
+    if (!trf) return false;
     trf.status = 'recebida';
     trf.deliveryDate = new Date().toISOString();
 
-    // Processa os itens recebidos com base na conferência física
-    if (receiptData && receiptData.receivedItems && receiptData.receivedItems.length > 0) {
-      trf.items = trf.items.map(origItem => {
-        const found = receiptData.receivedItems.find(r => r.sku === origItem.sku);
-        const realReceived = found ? found.receivedQuantity : origItem.quantity;
-        return {
-          ...origItem,
-          receivedQuantity: realReceived, // Armazena a quantidade real recebida separadamente
-          // NOTA: origitem.quantity (quantidade enviada/solicitada) fica intocada!
-        };
-      });
-    }
-
-    // Ingest stock into destination warehouse using EXCLUSIVELY the receivedQuantity
+    // Ingest stock into destination warehouse
     trf.items.forEach(item => {
       const prod = catalogService.getProductById(item.productId);
       if (prod) {
-        const qtyToIngest = (item as any).receivedQuantity !== undefined ? (item as any).receivedQuantity : item.quantity;
         const cur = prod.stockLevels[trf.destinationWarehouseId] || 0;
-        
-        // Atualiza o estoque de forma limpa (somando apenas uma vez a quantidade real recebida)
-        catalogService.updateStockQuantity(item.productId, trf.destinationWarehouseId, cur + qtyToIngest);
+        catalogService.updateStockQuantity(item.productId, trf.destinationWarehouseId, cur + item.quantity);
 
         // Movement record for inbound
         this.addStockMovement({
@@ -1210,14 +1184,14 @@ public receiveTransfer(transferId: string, receiptData?: { receivedItems: any[] 
           productSku: item.sku,
           productName: item.productName,
           type: 'entrada_transferencia',
-          quantity: qtyToIngest,
+          quantity: item.quantity,
           unitPriceAOA: prod.basePriceAOA,
-          totalPriceAOA: qtyToIngest * prod.basePriceAOA,
+          totalPriceAOA: item.quantity * prod.basePriceAOA,
           originReference: trf.transferCode,
           requesterOrRecipient: `Armazém Origem: ${this.warehouses.find(w => w.id === trf.originWarehouseId)?.name}`,
           executedByUserId: this.currentUser?.id || 'sys',
           executedByUserName: this.currentUser?.name || 'Sistema',
-          notes: 'Recebimento e conferência física de transferência inter-armazém',
+          notes: 'Recebimento de transferência inter-armazém',
         });
       }
     });
