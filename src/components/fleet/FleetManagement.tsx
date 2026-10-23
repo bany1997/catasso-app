@@ -21,12 +21,14 @@ import {
   CheckCircle2,
   Clock,
   Search,
+  Check,
+  XCircle,
 } from 'lucide-react';
 
 export const FleetManagement: React.FC = () => {
   const [selectedWarehouseFilter, setSelectedWarehouseFilter] = useState('all');
   const [selectedConditionFilter, setSelectedConditionFilter] = useState('all');
-  const [searchQuery, setSearchQuery] = useState(''); // Estado para a barra de pesquisa
+  const [searchQuery, setSearchQuery] = useState('');
   
   const [selectedEquipment, setSelectedEquipment] = useState<Equipment | null>(null);
   const [editingEquipment, setEditingEquipment] = useState<Equipment | null>(null);
@@ -88,6 +90,17 @@ export const FleetManagement: React.FC = () => {
   const totalFleetValue = visibleFleet.reduce((sum, e) => sum + e.currentValueAOA, 0);
   const totalRepairs = visibleFleet.reduce((sum, e) => sum + (e.totalRepairCostAOA || 0), 0);
   const totalMonthlyRentalPotential = visibleFleet.reduce((sum, e) => sum + (e.monthlyRentalCostAOA || 0), 0);
+
+  // Service Requests pendentes para o Gestor de Frotas
+  const pendingServiceRequests = erpStore.serviceRequests.filter(sr => {
+    if (!isFleetManager) return sr.warehouseId === activeWh?.id;
+    return true;
+  });
+
+  const handleUpdateServiceStatus = (reqId: string, newStatus: 'pendente' | 'em_execucao' | 'concluida' | 'cancelada') => {
+    erpStore.updateServiceRequest(reqId, { status: newStatus });
+    alert(`Status da solicitação atualizado para: ${newStatus.toUpperCase()}`);
+  };
 
   // Create New Equipment Handler
   const handleCreateEquipment = (e: React.FormEvent) => {
@@ -190,7 +203,6 @@ export const FleetManagement: React.FC = () => {
     alert('Solicitação de serviço enviada diretamente ao Gestor de Frotas!');
   };
 
-  // Export Fleet Summary to Excel
   const handleExportFleetExcel = () => {
     const headers = [
       'Código Frota',
@@ -229,7 +241,6 @@ export const FleetManagement: React.FC = () => {
     exportToExcel('Relatorio_Frotas_Equipamentos_Geral', headers, rows);
   };
 
-  // Export Individual Equipment Maintenance History to PDF
   const handlePrintMaintenanceHistory = (eq: Equipment) => {
     const records = erpStore.maintenanceRecords.filter(m => m.equipmentId === eq.id);
     const wh = erpStore.warehouses.find(w => w.id === eq.warehouseId);
@@ -340,6 +351,82 @@ export const FleetManagement: React.FC = () => {
               {visibleFleet.length} Veículos / Maquinários
             </span>
           </div>
+        </div>
+      </div>
+
+      {/* PAINEL DE SOLICITAÇÕES DE SERVIÇO (Gestor de Frotas) */}
+      <div className="bg-slate-900 border border-slate-800 rounded-lg p-4 space-y-3">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+          <div className="flex items-center gap-2 text-xs font-bold text-amber-400 uppercase">
+            <Clock className="w-4 h-4" />
+            <span>Painel de Solicitações de Serviços de Frotas ({pendingServiceRequests.length})</span>
+          </div>
+          <span className="text-[10px] text-slate-400">Gerencie reparos, manutenções e abastecimentos solicitados</span>
+        </div>
+
+        <div className="space-y-2 max-h-60 overflow-y-auto">
+          {pendingServiceRequests.length === 0 ? (
+            <div className="py-4 text-center text-slate-500 text-xs">Nenhuma solicitação de serviço registrada no momento.</div>
+          ) : (
+            pendingServiceRequests.map(sr => {
+              const eq = erpStore.equipment.find(e => e.id === sr.equipmentId);
+              const statusColors: Record<string, string> = {
+                pendente: 'bg-amber-950 text-amber-300 border-amber-800',
+                em_execucao: 'bg-sky-950 text-sky-300 border-sky-800',
+                concluida: 'bg-emerald-950 text-emerald-300 border-emerald-800',
+                cancelada: 'bg-red-950 text-red-300 border-red-800',
+              };
+
+              return (
+                <div key={sr.id} className="bg-slate-950 border border-slate-800 p-3 rounded flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-bold text-sky-400">{sr.code}</span>
+                      <span className="font-semibold text-white">{sr.equipmentName}</span>
+                      <span className={`text-[10px] uppercase px-1.5 py-0.5 rounded border font-mono ${statusColors[sr.status]}`}>
+                        {sr.status.replace('_', ' ')}
+                      </span>
+                    </div>
+                    <p className="text-slate-300 mt-1"><strong>Tipo:</strong> {sr.requestType.toUpperCase()} | <strong>Prioridade:</strong> {sr.priority.toUpperCase()}</p>
+                    <p className="text-slate-400 text-[11px] mt-0.5">"{sr.description}" — <span className="text-slate-500">Solicitante: {sr.requestedByUserName}</span></p>
+                  </div>
+
+                  {isFleetManager && (
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {sr.status === 'pendente' && (
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateServiceStatus(sr.id, 'em_execucao')}
+                          className="px-2.5 py-1 bg-sky-700 hover:bg-sky-600 text-white rounded text-[11px] font-semibold"
+                        >
+                          Iniciar Execução
+                        </button>
+                      )}
+                      {sr.status !== 'concluida' && (
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateServiceStatus(sr.id, 'concluida')}
+                          className="px-2.5 py-1 bg-emerald-700 hover:bg-emerald-600 text-white rounded text-[11px] font-semibold flex items-center gap-1"
+                        >
+                          <Check className="w-3 h-3" />
+                          <span>Concluir</span>
+                        </button>
+                      )}
+                      {sr.status !== 'cancelada' && sr.status !== 'concluida' && (
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateServiceStatus(sr.id, 'cancelada')}
+                          className="px-2 py-1 bg-red-900/60 hover:bg-red-800 text-red-200 rounded text-[11px]"
+                        >
+                          Cancelar
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
 
