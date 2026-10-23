@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 
 export const FleetManagement: React.FC = () => {
+  const [resolvingServiceReq, setResolvingServiceReq] = useState<ServiceRequest | null>(null);
   const [selectedWarehouseFilter, setSelectedWarehouseFilter] = useState('all');
   const [selectedConditionFilter, setSelectedConditionFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
