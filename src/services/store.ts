@@ -1128,20 +1128,18 @@ constructor() {
     return newTransfer;
   }
 
-  public approveTransfer(transferId: string): boolean {
+public approveTransfer(transferId: string): boolean {
     const trf = this.transfers.find(t => t.id === transferId);
     if (!trf) return false;
+    if (trf.status === 'em_transito' || trf.status === 'recebida') return true; // Evita reprocessar se já foi aprovado
+    
     trf.status = 'em_transito';
     trf.approvalDate = new Date().toISOString();
 
-    // Deduct stock from origin warehouse
+    // Regista a saída na origem usando apenas addStockMovement (que já atualiza o estoque com segurança)
     trf.items.forEach(item => {
       const prod = catalogService.getProductById(item.productId);
       if (prod) {
-        const cur = prod.stockLevels[trf.originWarehouseId] || 0;
-        catalogService.updateStockQuantity(item.productId, trf.originWarehouseId, Math.max(0, cur - item.quantity));
-
-        // Movement record for outbound
         this.addStockMovement({
           warehouseId: trf.originWarehouseId,
           productId: item.productId,
@@ -1167,17 +1165,15 @@ constructor() {
   public receiveTransfer(transferId: string): boolean {
     const trf = this.transfers.find(t => t.id === transferId);
     if (!trf) return false;
+    if (trf.status === 'recebida') return true; // Evita reprocessar se já foi recebido
+
     trf.status = 'recebida';
     trf.deliveryDate = new Date().toISOString();
 
-    // Ingest stock into destination warehouse
+    // Regista a entrada no destino usando apenas addStockMovement (que já atualiza o estoque com segurança, sem duplicar)
     trf.items.forEach(item => {
       const prod = catalogService.getProductById(item.productId);
       if (prod) {
-        const cur = prod.stockLevels[trf.destinationWarehouseId] || 0;
-        catalogService.updateStockQuantity(item.productId, trf.destinationWarehouseId, cur + item.quantity);
-
-        // Movement record for inbound
         this.addStockMovement({
           warehouseId: trf.destinationWarehouseId,
           productId: item.productId,
