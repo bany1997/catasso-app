@@ -554,8 +554,9 @@ const NewMultiTransferModal: React.FC<{ onClose: () => void; onSuccess: () => vo
   );
 };
 
+
 // ==========================================
-// MODAL 2: Análise e Despacho na Origem (Sem Travamento de Estoque)
+// MODAL 2: Análise e Despacho na Origem
 // ==========================================
 const ApproveTransferModal: React.FC<{
   transfer: WarehouseTransfer;
@@ -565,7 +566,6 @@ const ApproveTransferModal: React.FC<{
   const originWh = erpStore.warehouses.find(w => w.id === transfer.originWarehouseId);
   const destWh = erpStore.warehouses.find(w => w.id === transfer.destinationWarehouseId);
 
-  // Inicializa permitindo ajustar a quantidade livremente até ao saldo disponível real
   const [itemsToShip, setItemsToShip] = useState(
     transfer.items.map(item => {
       const prod = catalogService.getProductBySku(item.sku);
@@ -593,7 +593,6 @@ const ApproveTransferModal: React.FC<{
       return;
     }
 
-    // Valida se a quantidade inserida não excede o estoque físico disponível na origem
     for (const item of itemsToShip) {
       if (item.approvedQty > item.availableStock) {
         alert(`A quantidade aprovada para o produto ${item.productName} (${item.approvedQty} UN) excede o estoque físico disponível no armazém (${item.availableStock} UN).`);
@@ -601,34 +600,28 @@ const ApproveTransferModal: React.FC<{
       }
     }
 
-    // Baixa o estoque físico diretamente no armazém de origem de forma segura
-    itemsToShip.forEach(i => {
-      const prod = catalogService.getProductById(i.productId);
-      if (prod) {
-        const currentStock = prod.stockLevels[transfer.originWarehouseId] || 0;
-        const newStock = Math.max(0, currentStock - i.approvedQty);
-        catalogService.updateStock(i.productId, transfer.originWarehouseId, newStock);
-      }
+    // Delega tudo para o store centralizado (evita duplicações)
+    const success = erpStore.approveTransfer(transfer.id, {
+      items: itemsToShip.map(i => ({
+        productId: i.productId,
+        sku: i.sku,
+        productName: i.productName,
+        quantity: i.approvedQty,
+      })),
+      transportDetails: {
+        carrier,
+        driverName,
+        driverPhone,
+        vehiclePlate,
+        estimatedArrival,
+      },
     });
 
-    // Atualiza o estado da transferência no store
-    transfer.status = 'em_transito';
-    transfer.items = itemsToShip.map(i => ({
-      productId: i.productId,
-      sku: i.sku,
-      productName: i.productName,
-      quantity: i.approvedQty, // Quantidade efetivamente enviada e aprovada
-    }));
-    transfer.transportDetails = {
-      carrier,
-      driverName,
-      driverPhone,
-      vehiclePlate,
-      estimatedArrival,
-    };
-
-    erpStore.saveToStorage();
-    onSuccess();
+    if (success) {
+      onSuccess();
+    } else {
+      alert('Erro ao aprovar transferência.');
+    }
   };
 
   return (
@@ -671,7 +664,7 @@ const ApproveTransferModal: React.FC<{
                       onChange={e => {
                         const val = parseInt(e.target.value, 10) || 0;
                         const newItems = [...itemsToShip];
-                        newItems[idx].approvedQty = val; // Permite digitar livremente para validação no submit
+                        newItems[idx].approvedQty = val;
                         setItemsToShip(newItems);
                       }}
                       className="w-full bg-slate-900 border border-slate-700 rounded p-1.5 text-emerald-400 font-mono font-bold focus:border-amber-500"
@@ -769,6 +762,7 @@ const ApproveTransferModal: React.FC<{
   );
 };
 
+
 // ==========================================
 // MODAL 3: Conferência Discriminada no Destino
 // ==========================================
@@ -787,26 +781,21 @@ const ReceiveCheckModal: React.FC<{
   const handleConfirmReceipt = (e: React.FormEvent) => {
     e.preventDefault();
 
-    receivedItems.forEach(i => {
-      const prod = catalogService.getProductById(i.productId);
-      if (prod) {
-        const currentStock = prod.stockLevels[transfer.destinationWarehouseId] || 0;
-        const newStock = currentStock + i.receivedQuantity;
-        catalogService.updateStock(i.productId, transfer.destinationWarehouseId, newStock);
-      }
+    // Delega tudo para o store centralizado (evita duplicações)
+    const success = erpStore.receiveTransfer(transfer.id, {
+      receivedItems: receivedItems.map(i => ({
+        productId: i.productId,
+        sku: i.sku,
+        productName: i.productName,
+        receivedQuantity: i.receivedQuantity,
+      })),
     });
 
-    transfer.status = 'recebida';
-    transfer.items = receivedItems.map(i => ({
-      productId: i.productId,
-      sku: i.sku,
-      productName: i.productName,
-      quantity: i.quantity,
-      receivedQuantity: i.receivedQuantity,
-    } as any));
-
-    erpStore.saveToStorage();
-    onSuccess();
+    if (success) {
+      onSuccess();
+    } else {
+      alert('Erro ao processar recebimento.');
+    }
   };
 
   return (
