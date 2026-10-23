@@ -766,6 +766,9 @@ const ApproveTransferModal: React.FC<{
 // ==========================================
 // MODAL 3: Conferência Discriminada no Destino
 // ==========================================
+// ==========================================
+// MODAL 3: Conferência Discriminada no Destino (Sem alterar a Qtd Solicitada)
+// ==========================================
 const ReceiveCheckModal: React.FC<{
   transfer: WarehouseTransfer;
   onClose: () => void;
@@ -774,14 +777,13 @@ const ReceiveCheckModal: React.FC<{
   const [receivedItems, setReceivedItems] = useState(
     transfer.items.map(item => ({
       ...item,
-      receivedQuantity: item.quantity,
+      receivedQuantity: item.quantity, // Sugere por defeito o que foi enviado
     }))
   );
 
   const handleConfirmReceipt = (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Delega tudo para o store centralizado (evita duplicações)
     const success = erpStore.receiveTransfer(transfer.id, {
       receivedItems: receivedItems.map(i => ({
         productId: i.productId,
