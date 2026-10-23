@@ -102,25 +102,22 @@ const handleUpdateServiceStatus = (reqId: string, newStatus: 'pendente' | 'em_ex
     const serviceReq = erpStore.serviceRequests.find(sr => sr.id === reqId);
     if (!serviceReq) return;
 
-    // Atualiza o status da solicitação para o solicitante ver
-    erpStore.updateServiceRequest(reqId, { status: newStatus });
-
-    // Se o gestor concluiu o serviço, alimenta automaticamente o Prontuário de Manutenção do equipamento!
+    // Se a ação for CONCLUIR, abre o modal de manutenção pré-preenchido com os dados do equipamento
     if (newStatus === 'concluida') {
-      erpStore.addMaintenanceRecord({
-        equipmentId: serviceReq.equipmentId,
-        date: new Date().toISOString().split('T')[0],
-        type: serviceReq.requestType === 'manutencao_preventiva' ? 'preventiva' : 'corretiva',
-        description: `[Via Solicitação ${serviceReq.code}] ${serviceReq.description}`,
-        costAOA: 150000, // Custo padrão inicial estimado que pode ser editado ou ajustado depois se necessário
-        partsReplaced: ['Reparo Geral / Ajuste Técnico'],
-        performedBy: currentUser?.name || 'Oficina / Gestão de Frotas',
-        nextScheduledDate: new Date(Date.now() + 90 * 24 * 3600 * 1000).toISOString().split('T')[0],
-      });
-      alert('Solicitação concluída com sucesso! O registro foi incorporado automaticamente no Prontuário de Manutenção do equipamento.');
-    } else {
-      alert(`Status da solicitação atualizado para: ${newStatus.toUpperCase()}`);
+      const eq = erpStore.equipment.find(e => e.id === serviceReq.equipmentId);
+      if (eq) {
+        setSelectedEquipment(eq);
+        setMaintDesc(`[Solicitação ${serviceReq.code}] ${serviceReq.description}`);
+        setMaintType(serviceReq.requestType === 'manutencao_preventiva' ? 'preventiva' : 'corretiva');
+        setResolvingServiceReq(serviceReq); // Guarda a solicitação atual para ser concluída ao guardar a manutenção
+        setIsNewMaintModalOpen(true);
+      }
+      return;
     }
+
+    // Para outros status (Ex: Iniciar Execução, Cancelar), atualiza diretamente
+    erpStore.updateServiceRequest(reqId, { status: newStatus });
+    alert(`Status da solicitação atualizado para: ${newStatus.toUpperCase()}`);
   };
 
   // Create New Equipment Handler
@@ -181,10 +178,12 @@ const handleUpdateServiceStatus = (reqId: string, newStatus: 'pendente' | 'em_ex
   };
 
   // Add Maintenance Record Handler
+// Add Maintenance Record Handler
   const handleAddMaintenance = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedEquipment) return;
 
+    // 1. Grava a manutenção no prontuário do equipamento com os dados REAIS introduzidos pelo gestor
     erpStore.addMaintenanceRecord({
       equipmentId: selectedEquipment.id,
       date: new Date().toISOString().split('T')[0],
@@ -196,9 +195,16 @@ const handleUpdateServiceStatus = (reqId: string, newStatus: 'pendente' | 'em_ex
       nextScheduledDate: new Date(Date.now() + 90 * 24 * 3600 * 1000).toISOString().split('T')[0],
     });
 
+    // 2. Se esta manutenção veio de uma solicitação de serviço, marca a solicitação como concluída!
+    if (resolvingServiceReq) {
+      erpStore.updateServiceRequest(resolvingServiceReq.id, { status: 'concluida' });
+      setResolvingServiceReq(null);
+    }
+
     setIsNewMaintModalOpen(false);
     setMaintDesc('');
-    alert('Ordem de manutenção registrada com sucesso e custos incorporados!');
+    setMaintParts('');
+    alert('Ordem de manutenção registrada com sucesso e incorporada no Prontuário do equipamento!');
   };
 
   // Add Service Request Handler
