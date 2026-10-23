@@ -1174,32 +1174,33 @@ public approveTransfer(transferId: string, approvalData?: { items: any[]; transp
     return true;
   }
 
-  public receiveTransfer(transferId: string, receiptData?: { receivedItems: any[] }): boolean {
+public receiveTransfer(transferId: string, receiptData?: { receivedItems: any[] }): boolean {
     const trf = this.transfers.find(t => t.id === transferId);
     if (!trf || trf.status === 'recebida') return false;
     trf.status = 'recebida';
     trf.deliveryDate = new Date().toISOString();
 
-    // Se o operador inseriu quantidades reais na conferência física de entrada
-    let itemsToIngest = trf.items;
+    // Processa os itens recebidos com base na conferência física
     if (receiptData && receiptData.receivedItems && receiptData.receivedItems.length > 0) {
-      itemsToIngest = receiptData.receivedItems.map(r => {
-        const originalItem = trf.items.find(i => i.sku === r.sku) || r;
+      trf.items = trf.items.map(origItem => {
+        const found = receiptData.receivedItems.find(r => r.sku === origItem.sku);
+        const realReceived = found ? found.receivedQuantity : origItem.quantity;
         return {
-          ...originalItem,
-          quantity: r.receivedQuantity, // Substitui pela quantidade real contada
-          receivedQuantity: r.receivedQuantity,
+          ...origItem,
+          receivedQuantity: realReceived, // Armazena a quantidade real recebida separadamente
+          // NOTA: origitem.quantity (quantidade enviada/solicitada) fica intocada!
         };
       });
-      trf.items = itemsToIngest; // Atualiza no objeto da transferência
     }
 
-    // Ingest stock into destination warehouse using exact counted quantities
-    itemsToIngest.forEach(item => {
+    // Ingest stock into destination warehouse using EXCLUSIVELY the receivedQuantity
+    trf.items.forEach(item => {
       const prod = catalogService.getProductById(item.productId);
       if (prod) {
         const qtyToIngest = (item as any).receivedQuantity !== undefined ? (item as any).receivedQuantity : item.quantity;
         const cur = prod.stockLevels[trf.destinationWarehouseId] || 0;
+        
+        // Atualiza o estoque de forma limpa (somando apenas uma vez a quantidade real recebida)
         catalogService.updateStockQuantity(item.productId, trf.destinationWarehouseId, cur + qtyToIngest);
 
         // Movement record for inbound
