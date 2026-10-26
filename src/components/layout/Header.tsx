@@ -57,7 +57,7 @@ export const Header: React.FC<HeaderProps> = ({ onLogout, activeTab }) => {
       {/* Brand & System Identifier */}
       <div className="flex items-center gap-3">
         <div className="bg-gradient-to-br from-sky-500 to-blue-700 p-2.5 rounded-xl text-white font-bold tracking-wider shadow-lg shadow-sky-500/20">
-          ELECNOR
+          CATASSO
         </div>
         <div>
           <div className="flex items-center gap-2">
