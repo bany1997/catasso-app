@@ -87,7 +87,7 @@ export const GeneralDashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
             </h1>
             <p className="text-xs text-slate-400 mt-1 max-w-2xl leading-relaxed">
               Bem-vindo ao painel central de controle. Monitorização em tempo real de suprimentos industriais,
-              posições de frotas, trâmites de fornecedores e controle de qualidade para a República de Angola.
+              posições de frotas, trâmites de fornecedores e controle de qualidade para  Angola.
             </p>
           </div>
 
